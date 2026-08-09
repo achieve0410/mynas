@@ -1,6 +1,6 @@
 import type { Database } from "bun:sqlite";
 
-const MIGRATION_VERSION = 3;
+const MIGRATION_VERSION = 4;
 
 export const migrate = (database: Database): void => {
   database.exec(`
@@ -74,6 +74,43 @@ export const migrate = (database: Database): void => {
       kind TEXT NOT NULL CHECK (kind = 'mirror'),
       members_json TEXT NOT NULL,
       created_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS photos (
+      id TEXT PRIMARY KEY,
+      checksum TEXT NOT NULL UNIQUE,
+      filename TEXT NOT NULL,
+      format TEXT NOT NULL CHECK (format = 'jpeg'),
+      width INTEGER NOT NULL CHECK (width > 0),
+      height INTEGER NOT NULL CHECK (height > 0),
+      captured_at TEXT NOT NULL,
+      imported_at TEXT NOT NULL,
+      original_path TEXT NOT NULL UNIQUE,
+      preview_path TEXT NOT NULL UNIQUE
+    );
+
+    CREATE INDEX IF NOT EXISTS photos_timeline_idx
+      ON photos (captured_at DESC, imported_at DESC);
+
+    CREATE TABLE IF NOT EXISTS photo_jobs (
+      id TEXT PRIMARY KEY,
+      status TEXT NOT NULL CHECK (status IN ('queued', 'processing', 'completed', 'failed')),
+      photo_id TEXT REFERENCES photos(id) ON DELETE SET NULL,
+      error TEXT,
+      created_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS photo_albums (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS photo_album_items (
+      album_id TEXT NOT NULL REFERENCES photo_albums(id) ON DELETE CASCADE,
+      photo_id TEXT NOT NULL REFERENCES photos(id) ON DELETE CASCADE,
+      added_at TEXT NOT NULL,
+      PRIMARY KEY (album_id, photo_id)
     );
   `);
 
