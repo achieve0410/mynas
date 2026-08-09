@@ -55,8 +55,8 @@ for (const pattern of forbiddenContent) {
 }
 
 const identities = requireSuccess(
-  await command(["git", "log", "--all", "--format=%an%x00%ae"], {}),
-  "commit identity inventory",
+  await command(["git", "log", "HEAD", "--format=%an%x00%ae"], {}),
+  "release ancestry identity inventory",
 )
   .split("\n")
   .filter((identity) => identity.length > 0);

@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { z } from "zod";
 
@@ -27,10 +27,9 @@ const artifactRoot = resolve(repositoryRoot, ".artifacts/qa/packaging");
 await mkdir(artifactRoot, { recursive: true });
 const qaRoot = await mkdtemp(join(artifactRoot, "docker-runtime."));
 const storageRoot = join(qaRoot, "storage");
-await Promise.all([
-  mkdir(join(storageRoot, "disk-a"), { recursive: true }),
-  mkdir(join(storageRoot, "disk-b"), { recursive: true }),
-]);
+const backendRoots = [join(storageRoot, "disk-a"), join(storageRoot, "disk-b")];
+await Promise.all(backendRoots.map((root) => mkdir(root, { recursive: true })));
+await Promise.all(backendRoots.map((root) => chmod(root, 0o777)));
 const composeEnvironment = {
   COMPOSE_PROJECT_NAME: projectName,
   MYNAS_PORT: "0",

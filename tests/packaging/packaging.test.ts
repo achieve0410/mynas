@@ -101,6 +101,7 @@ describe("distribution packaging", () => {
     expect(source).toContain('"--build"');
     expect(source).toContain("process.pid");
     expect(source).toContain('MYNAS_PORT: "0"');
+    expect(source).toContain("chmod(root, 0o777)");
   });
 
   test("S3 live QA records mixed-mirror cleanup", async () => {
@@ -126,6 +127,15 @@ describe("distribution packaging", () => {
         "7105f1cd6577f058a9e39d0578f1a99c8a1e481e4d3512cd8a09acfe22a0fdc0",
       );
     }
+  });
+
+  test("release identity audit scopes authorship to published ancestry", async () => {
+    const source = await readFile(
+      resolve(repositoryRoot, "tests/packaging/release-audit.ts"),
+      "utf8",
+    );
+    expect(source).toContain('["git", "log", "HEAD", "--format=%an%x00%ae"]');
+    expect(source).toContain('["git", "log", "--all", "-p"');
   });
 
   test("Kubernetes renders one persistent non-root replica", async () => {
