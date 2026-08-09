@@ -56,6 +56,12 @@ const requireEnvironmentValue = (
   environment: Readonly<Record<string, string | undefined>>,
   name: string,
 ): string => {
+  if (!/^MYNAS_S3_[A-Z0-9_]+$/.test(name)) {
+    throw new S3StorageError(
+      "invalid_config",
+      "credential environment variables must use the MYNAS_S3_ namespace",
+    );
+  }
   const value = environment[name];
   if (value === undefined || value.length === 0) {
     throw new S3StorageError("invalid_config", `missing credential environment variable ${name}`);
@@ -67,6 +73,13 @@ const validateEndpoint = (endpoint: string): void => {
   const url = URL.parse(endpoint);
   if (url === null || (url.protocol !== "http:" && url.protocol !== "https:")) {
     throw new S3StorageError("invalid_config", "S3 endpoint must be an HTTP or HTTPS URL");
+  }
+  const loopback = ["127.0.0.1", "[::1]", "::1", "localhost"].includes(url.hostname);
+  if (url.protocol === "http:" && !loopback) {
+    throw new S3StorageError(
+      "invalid_config",
+      "S3 endpoint must use HTTPS unless it is a loopback QA endpoint",
+    );
   }
 };
 

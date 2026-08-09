@@ -13,8 +13,8 @@ export const BackendForm = ({ onAdded }: BackendFormProps) => {
   const [endpoint, setEndpoint] = useState("");
   const [bucket, setBucket] = useState("");
   const [region, setRegion] = useState("us-east-1");
-  const [accessKeyIdEnv, setAccessKeyIdEnv] = useState("AWS_ACCESS_KEY_ID");
-  const [secretAccessKeyEnv, setSecretAccessKeyEnv] = useState("AWS_SECRET_ACCESS_KEY");
+  const [accessKeyIdEnv, setAccessKeyIdEnv] = useState("MYNAS_S3_ACCESS_KEY_ID");
+  const [secretAccessKeyEnv, setSecretAccessKeyEnv] = useState("MYNAS_S3_SECRET_ACCESS_KEY");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 

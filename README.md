@@ -143,7 +143,9 @@ Add an S3 backend from the Storage page. Enter:
 
 For example, start the native service with `MYNAS_S3_ACCESS_KEY` and
 `MYNAS_S3_SECRET_KEY` in its environment, then enter those names in the form.
-The bucket must already exist. MyNAS stores only the two names.
+Credential references must begin with `MYNAS_S3_`. The bucket must already
+exist, and non-loopback endpoints must use HTTPS. MyNAS stores only the two
+environment-variable names.
 
 For Docker or Kubernetes, inject the same variables through a local Compose
 override or a Kubernetes Secret. Never put their values in `compose.yaml`,
