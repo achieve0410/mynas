@@ -1,14 +1,23 @@
-import { useMutation } from "@tanstack/react-query";
-import { Check, Copy, KeyRound, Server } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Check, Copy, KeyRound, Server, Trash2 } from "lucide-react";
 import { type FormEvent, useState } from "react";
 
 import { api } from "../api";
 
 export const SettingsPage = () => {
+  const queryClient = useQueryClient();
   const [name, setName] = useState("Mac automation");
   const [createdToken, setCreatedToken] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
-  const createToken = useMutation({ mutationFn: () => api.createToken(name) });
+  const tokens = useQuery({ queryFn: api.listTokens, queryKey: ["api-tokens"] });
+  const createToken = useMutation({
+    mutationFn: () => api.createToken(name),
+    onSuccess: async () => queryClient.invalidateQueries({ queryKey: ["api-tokens"] }),
+  });
+  const revokeToken = useMutation({
+    mutationFn: api.revokeToken,
+    onSuccess: async () => queryClient.invalidateQueries({ queryKey: ["api-tokens"] }),
+  });
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -87,6 +96,38 @@ export const SettingsPage = () => {
             </button>
           </div>
         )}
+        <h3>Active API tokens</h3>
+        {tokens.isPending ? <p>Loading tokens…</p> : null}
+        {tokens.isError ? (
+          <p aria-live="polite" className="form-error">
+            {tokens.error.message}
+          </p>
+        ) : null}
+        {tokens.data?.length === 0 ? <p>No active API tokens.</p> : null}
+        <ul className="definition-list">
+          {tokens.data?.map((token) => (
+            <li key={token.id}>
+              <span>
+                <strong>{token.name}</strong>
+                <small>Created {new Date(token.createdAt).toLocaleString()}</small>
+              </span>
+              <button
+                aria-label={`Revoke ${token.name}`}
+                className="button quiet"
+                disabled={revokeToken.isPending}
+                onClick={() => revokeToken.mutate(token.id)}
+                type="button"
+              >
+                <Trash2 size={16} /> Revoke
+              </button>
+            </li>
+          ))}
+        </ul>
+        {revokeToken.isError ? (
+          <p aria-live="polite" className="form-error">
+            {revokeToken.error.message}
+          </p>
+        ) : null}
       </section>
     </div>
   );

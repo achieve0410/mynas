@@ -17,6 +17,12 @@ export type ApiTokenCredential = {
   readonly token: string;
 };
 
+export type ApiTokenRecord = {
+  readonly createdAt: string;
+  readonly id: string;
+  readonly name: string;
+};
+
 export type AuthErrorCode =
   | "authentication_failed"
   | "invalid_input"
@@ -51,6 +57,12 @@ type ApiTokenRow = {
   readonly revoked_at: string | null;
   readonly user_id: string;
   readonly username: string;
+};
+
+type ApiTokenListRow = {
+  readonly created_at: string;
+  readonly id: string;
+  readonly name: string;
 };
 
 const SESSION_LIFETIME_MS = 7 * 24 * 60 * 60 * 1_000;
@@ -215,9 +227,21 @@ export class AuthService {
     return { id: row.user_id, username: row.username };
   }
 
-  public revokeApiToken(id: string): void {
+  public listApiTokens(userId: string): readonly ApiTokenRecord[] {
+    return this.database
+      .query<ApiTokenListRow, [string]>(
+        `SELECT id, name, created_at
+         FROM api_tokens
+         WHERE user_id = ? AND revoked_at IS NULL
+         ORDER BY created_at, id`,
+      )
+      .all(userId)
+      .map((row) => ({ createdAt: row.created_at, id: row.id, name: row.name }));
+  }
+
+  public revokeApiToken(userId: string, id: string): void {
     this.database
-      .query("UPDATE api_tokens SET revoked_at = ? WHERE id = ?")
-      .run(this.now().toISOString(), id);
+      .query("UPDATE api_tokens SET revoked_at = ? WHERE user_id = ? AND id = ?")
+      .run(this.now().toISOString(), userId, id);
   }
 }

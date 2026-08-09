@@ -19,6 +19,13 @@ const tokenSchema = z.object({
   name: z.string(),
   token: z.string().min(32),
 });
+const tokenListSchema = z.array(
+  z.object({
+    createdAt: z.string().datetime(),
+    id: z.string().uuid(),
+    name: z.string(),
+  }),
+);
 
 describe("owner authentication API", () => {
   let app: ReturnType<typeof createApp>;
@@ -88,6 +95,17 @@ describe("owner authentication API", () => {
     });
     expect(created.status).toBe(201);
     const apiToken = tokenSchema.parse(await created.json());
+    const listed = await app.request("/api/v1/tokens", {
+      headers: { authorization: `Bearer ${session.token}` },
+    });
+    expect(listed.status).toBe(200);
+    expect(tokenListSchema.parse(await listed.json())).toEqual([
+      {
+        createdAt: expect.any(String),
+        id: apiToken.id,
+        name: "qa",
+      },
+    ]);
 
     const status = await app.request("/api/v1/system/status", {
       headers: { authorization: `Bearer ${apiToken.token}` },
@@ -100,6 +118,10 @@ describe("owner authentication API", () => {
       method: "DELETE",
     });
     expect(revoked.status).toBe(204);
+    const afterRevoke = await app.request("/api/v1/tokens", {
+      headers: { authorization: `Bearer ${session.token}` },
+    });
+    expect(tokenListSchema.parse(await afterRevoke.json())).toEqual([]);
     expect(
       (
         await app.request("/api/v1/system/status", {

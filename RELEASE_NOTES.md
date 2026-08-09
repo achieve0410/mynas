@@ -36,8 +36,9 @@ gallery.
   overflow, CJK filenames, and original SHA-256
 - Docker image health, two mounted members, mirrored file roundtrip, and full
   teardown
-- Strict Kubernetes 1.31 schema validation for Namespace, PVC, Deployment, and
-  Service; no local cluster was available for server-side dry-run
+- Strict Kubernetes 1.31 schema validation for Namespace, PVC, Deployment,
+  Service, and NetworkPolicy; no local cluster was available for server-side
+  dry-run
 
 All repository fixtures are synthetic. Ignored QA evidence contains synthetic,
 non-personal data only.

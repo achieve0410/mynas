@@ -55,23 +55,23 @@ const endpoint = process.env.MYNAS_TEST_S3_ENDPOINT;
 const useMinio = endpoint !== undefined;
 const environment: Readonly<Record<string, string | undefined>> = useMinio
   ? {
-      MYNAS_TEST_S3_ACCESS_KEY: process.env.MYNAS_TEST_S3_ACCESS_KEY,
-      MYNAS_TEST_S3_SECRET_KEY: process.env.MYNAS_TEST_S3_SECRET_KEY,
+      MYNAS_S3_TEST_ACCESS_KEY: process.env.MYNAS_TEST_S3_ACCESS_KEY,
+      MYNAS_S3_TEST_SECRET_KEY: process.env.MYNAS_TEST_S3_SECRET_KEY,
     }
   : {
-      MYNAS_TEST_S3_ACCESS_KEY: "memory-access",
-      MYNAS_TEST_S3_SECRET_KEY: "memory-secret",
+      MYNAS_S3_TEST_ACCESS_KEY: "memory-access",
+      MYNAS_S3_TEST_SECRET_KEY: "memory-secret",
     };
 
 const backend = new S3StorageBackend(
   {
-    accessKeyIdEnv: "MYNAS_TEST_S3_ACCESS_KEY",
+    accessKeyIdEnv: "MYNAS_S3_TEST_ACCESS_KEY",
     bucket: process.env.MYNAS_TEST_S3_BUCKET ?? "mynas-test",
-    endpoint: endpoint ?? "http://memory.invalid",
+    endpoint: endpoint ?? "http://127.0.0.1",
     id: "s3-test",
     prefix: "objects",
     region: "us-east-1",
-    secretAccessKeyEnv: "MYNAS_TEST_S3_SECRET_KEY",
+    secretAccessKeyEnv: "MYNAS_S3_TEST_SECRET_KEY",
   },
   environment,
   useMinio ? undefined : new MemoryObjectClient(),
@@ -111,15 +111,69 @@ describe("S3StorageBackend", () => {
       () =>
         new S3StorageBackend(
           {
-            accessKeyIdEnv: "MISSING_ACCESS",
+            accessKeyIdEnv: "MYNAS_S3_MISSING_ACCESS",
             bucket: "missing",
             endpoint: "http://127.0.0.1:9000",
             id: "missing",
             region: "us-east-1",
-            secretAccessKeyEnv: "MISSING_SECRET",
+            secretAccessKeyEnv: "MYNAS_S3_MISSING_SECRET",
           },
           {},
         ),
-    ).toThrow("MISSING_ACCESS");
+    ).toThrow("MYNAS_S3_MISSING_ACCESS");
+  });
+
+  test("rejects credential references outside the MyNAS S3 namespace", () => {
+    expect(
+      () =>
+        new S3StorageBackend(
+          {
+            accessKeyIdEnv: "DATABASE_URL",
+            bucket: "hostile",
+            endpoint: "https://s3.example.com",
+            id: "hostile",
+            region: "us-east-1",
+            secretAccessKeyEnv: "SESSION_SECRET",
+          },
+          {
+            DATABASE_URL: "synthetic-database-value",
+            SESSION_SECRET: "synthetic-session-value",
+          },
+        ),
+    ).toThrow("MYNAS_S3_");
+  });
+
+  test("rejects plaintext non-loopback endpoints", () => {
+    expect(
+      () =>
+        new S3StorageBackend(
+          {
+            accessKeyIdEnv: "MYNAS_S3_TEST_ACCESS_KEY",
+            bucket: "hostile",
+            endpoint: "http://s3.example.com",
+            id: "hostile",
+            region: "us-east-1",
+            secretAccessKeyEnv: "MYNAS_S3_TEST_SECRET_KEY",
+          },
+          environment,
+        ),
+    ).toThrow("HTTPS");
+  });
+
+  test("rejects credentials embedded in endpoints", () => {
+    expect(
+      () =>
+        new S3StorageBackend(
+          {
+            accessKeyIdEnv: "MYNAS_S3_TEST_ACCESS_KEY",
+            bucket: "hostile",
+            endpoint: "https://synthetic-user:synthetic-secret@[::1]",
+            id: "hostile",
+            region: "us-east-1",
+            secretAccessKeyEnv: "MYNAS_S3_TEST_SECRET_KEY",
+          },
+          environment,
+        ),
+    ).toThrow("must not contain credentials");
   });
 });

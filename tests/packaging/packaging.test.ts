@@ -71,12 +71,42 @@ describe("distribution packaging", () => {
     expect(app.volumes.map(({ target }) => target)).toContainAllValues(["/data", "/storage"]);
   });
 
+  test("source workspace is not advertised as an npm package", async () => {
+    const metadata = z
+      .object({
+        bin: z.unknown().optional(),
+        private: z.literal(true),
+        scripts: z.object({
+          prepublishOnly: z.string().includes("not distributed through npm"),
+        }),
+      })
+      .parse(JSON.parse(await readFile(resolve(repositoryRoot, "package.json"), "utf8")));
+    expect(metadata.bin).toBeUndefined();
+  });
+
   test("Dockerfile defines a non-root health-checked service", async () => {
     const dockerfile = await readFile(resolve(repositoryRoot, "Dockerfile"), "utf8");
     expect(dockerfile).toContain("USER bun");
+    expect(dockerfile).toContain("MYNAS_ALLOW_REMOTE=true");
     expect(dockerfile).toContain("HEALTHCHECK");
     expect(dockerfile).toContain('ENTRYPOINT ["bun", "apps/cli/src/main.ts", "serve"]');
     expect(dockerfile).toContain('"--host", "0.0.0.0"');
+  });
+
+  test("Docker live QA rebuilds the source image", async () => {
+    const source = await readFile(
+      resolve(repositoryRoot, "tests/packaging/docker-live.ts"),
+      "utf8",
+    );
+    expect(source).toContain('"--build"');
+    expect(source).toContain("process.pid");
+    expect(source).toContain('MYNAS_PORT: "0"');
+  });
+
+  test("S3 live QA records mixed-mirror cleanup", async () => {
+    const source = await readFile(resolve(repositoryRoot, "tests/packaging/s3-live.ts"), "utf8");
+    expect(source).toContain("S3_LIVE_QA_PASS=1");
+    expect(source).toContain("containers-volumes-port-temp-absent");
   });
 
   test("Kubernetes renders one persistent non-root replica", async () => {
@@ -94,6 +124,7 @@ describe("distribution packaging", () => {
       .parse(Bun.YAML.parse(source));
     const kinds = manifests.map(({ kind }) => kind);
     expect(kinds).toContain("Deployment");
+    expect(kinds).toContain("NetworkPolicy");
     expect(kinds).toContain("PersistentVolumeClaim");
     expect(kinds).toContain("Service");
 
@@ -105,8 +136,10 @@ describe("distribution packaging", () => {
           strategy: z.object({ type: z.literal("Recreate") }),
           template: z.object({
             spec: z.object({
+              automountServiceAccountToken: z.literal(false),
               containers: z.array(
                 z.object({
+                  args: z.array(z.string()),
                   readinessProbe: z.object({
                     httpGet: z.object({ path: z.literal("/api/v1/health") }),
                   }),
@@ -123,6 +156,7 @@ describe("distribution packaging", () => {
       })
       .parse(manifests.find(({ kind }) => kind === "Deployment"));
     expect(deployment.spec.template.spec.containers).toHaveLength(1);
+    expect(deployment.spec.template.spec.containers[0]?.args).toContain("/data/state");
     expect(
       deployment.spec.template.spec.containers[0]?.volumeMounts.map(({ mountPath }) => mountPath),
     ).toContain("/data");

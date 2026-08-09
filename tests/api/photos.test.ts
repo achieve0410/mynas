@@ -127,12 +127,14 @@ describe("photo API", () => {
       headers: { authorization: `Bearer ${token}` },
     });
     expect(preview.status).toBe(200);
+    expect(preview.headers.get("cache-control")).toBe("no-store");
     expect(preview.headers.get("content-type")).toBe("image/webp");
     expect(new TextDecoder().decode((await preview.bytes()).slice(0, 4))).toBe("RIFF");
 
     const original = await app.request(`/api/v1/photos/${ingest.photo.id}/original`, {
       headers: { authorization: `Bearer ${token}` },
     });
+    expect(original.headers.get("cache-control")).toBe("no-store");
     expect(original.headers.get("content-disposition")).toContain(
       encodeURIComponent("합성-풍경.jpg"),
     );
@@ -184,5 +186,17 @@ describe("photo API", () => {
       method: "POST",
     });
     expect(invalid.status).toBe(400);
+
+    const oversized = await app.request("/api/v1/photos", {
+      body: "small",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-length": String(25 * 1_024 * 1_024 + 1),
+        "content-type": "image/jpeg",
+        "x-mynas-filename": "oversized.jpg",
+      },
+      method: "POST",
+    });
+    expect(oversized.status).toBe(413);
   });
 });

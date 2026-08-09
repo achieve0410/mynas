@@ -107,8 +107,12 @@ export const registerProtectedAuthRoutes = (app: AppInstance, services: AppServi
     return context.json(services.auth.createApiToken(context.get("user").id, body.name), 201);
   });
 
+  app.get("/api/v1/tokens", (context) =>
+    context.json(services.auth.listApiTokens(context.get("user").id)),
+  );
+
   app.delete("/api/v1/tokens/:id", (context) => {
-    services.auth.revokeApiToken(context.req.param("id"));
+    services.auth.revokeApiToken(context.get("user").id, context.req.param("id"));
     return context.body(null, 204);
   });
 };

@@ -42,12 +42,13 @@ export const App = () => {
       onLogout={() => {
         void api
           .logout()
-          .catch((error: unknown) => {
-            console.error("Unable to revoke the server session during sign-out", error);
-          })
-          .finally(() => {
+          .then(() => {
             window.localStorage.removeItem(SESSION_KEY);
             refreshSession();
+          })
+          .catch((error: unknown) => {
+            const message = error instanceof Error ? error.message : "unknown error";
+            window.alert(`Sign-out failed; this session is still active. ${message}`);
           });
       }}
       path={path}

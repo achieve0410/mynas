@@ -106,6 +106,17 @@ const addAuthCommands = (program: Command, dependencies: CliDependencies): void 
     .action(async (options: { name: string }) => {
       writeJson(dependencies, await jsonRequest(dependencies, "/api/v1/tokens", options));
     });
+
+  program.command("token-list").action(async () => {
+    writeJson(dependencies, await (await request(dependencies, "/api/v1/tokens")).json());
+  });
+
+  program.command("token-revoke <id>").action(async (id: string) => {
+    await request(dependencies, `/api/v1/tokens/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+    });
+    writeJson(dependencies, { id, revoked: true });
+  });
 };
 
 const addBackendCommands = (program: Command, dependencies: CliDependencies): void => {

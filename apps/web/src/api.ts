@@ -4,11 +4,13 @@ import {
   albumSchema,
   albumsSchema,
   apiTokenSchema,
+  apiTokensSchema,
   backendsSchema,
   healthSchema,
   ingestSchema,
   operationSchema,
   photosSchema,
+  repairReportSchema,
   sessionSchema,
   setupStatusSchema,
   systemStatusSchema,
@@ -108,6 +110,7 @@ export const api = {
   listAlbums: () => json("/api/v1/albums", albumsSchema),
   listBackends: () => json("/api/v1/backends", backendsSchema),
   listPhotos: () => json("/api/v1/photos", photosSchema),
+  listTokens: () => json("/api/v1/tokens", apiTokensSchema),
   listVolumes: () => json("/api/v1/volumes", volumesSchema),
   login: (username: string, password: string) =>
     json("/api/v1/login", sessionSchema, {
@@ -116,13 +119,15 @@ export const api = {
     }),
   logout: () => request("/api/v1/logout", { method: "POST" }),
   repair: (volumeId: string) =>
-    json(`/api/v1/volumes/${encodeURIComponent(volumeId)}/repair`, operationSchema, {
+    json(`/api/v1/volumes/${encodeURIComponent(volumeId)}/repair`, repairReportSchema, {
       method: "POST",
     }),
   scrub: (volumeId: string) =>
     json(`/api/v1/volumes/${encodeURIComponent(volumeId)}/scrub`, operationSchema, {
       method: "POST",
     }),
+  revokeToken: (id: string) =>
+    request(`/api/v1/tokens/${encodeURIComponent(id)}`, { method: "DELETE" }),
   setup: (username: string, password: string) =>
     json("/api/v1/setup", operationSchema, {
       body: JSON.stringify({ password, username }),

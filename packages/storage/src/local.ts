@@ -53,7 +53,15 @@ export class LocalDirectoryBackend implements StorageBackend {
   public constructor(
     public readonly id: string,
     private readonly configuredRoot: string,
+    private readonly expectedIdentity?: string,
   ) {}
+
+  public get replicaIdentity(): string {
+    if (this.rootIdentity === null) {
+      throw new LocalStorageError("backend_unavailable", "backend is not initialized");
+    }
+    return `local:${this.rootIdentity}`;
+  }
 
   public async initialize(): Promise<void> {
     const rootInfo = await lstat(this.configuredRoot);
@@ -66,7 +74,8 @@ export class LocalDirectoryBackend implements StorageBackend {
 
     this.canonicalRoot = await realpath(this.configuredRoot);
     const canonicalInfo = await fileStat(this.canonicalRoot);
-    this.rootIdentity = filesystemIdentity(canonicalInfo.dev, canonicalInfo.ino);
+    this.rootIdentity =
+      this.expectedIdentity ?? filesystemIdentity(canonicalInfo.dev, canonicalInfo.ino);
   }
 
   public async delete(key: string): Promise<void> {

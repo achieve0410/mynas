@@ -7,18 +7,28 @@ import type { Volume } from "../schemas";
 
 export const VolumeRow = ({ volume }: { readonly volume: Volume }) => {
   const [message, setMessage] = useState<string | null>(null);
+  const [operationWarning, setOperationWarning] = useState(false);
   const health = useQuery({
     queryFn: () => api.getVolumeHealth(volume.id),
     queryKey: ["volume-health", volume.id],
   });
   const scrub = useMutation({
     mutationFn: () => api.scrub(volume.id),
-    onSuccess: () => setMessage("Scrub completed."),
+    onSuccess: (report) => {
+      const corrupt = typeof report.corrupt === "number" ? report.corrupt : 0;
+      const missing = typeof report.missing === "number" ? report.missing : 0;
+      const unrecoverable = typeof report.unrecoverable === "number" ? report.unrecoverable : 0;
+      setOperationWarning(unrecoverable > 0);
+      setMessage(
+        `Scrub completed: ${corrupt} corrupt, ${missing} missing, ${unrecoverable} unrecoverable.`,
+      );
+    },
   });
   const repair = useMutation({
     mutationFn: () => api.repair(volume.id),
-    onSuccess: async () => {
-      setMessage("Repair completed.");
+    onSuccess: async ({ repaired, unrecoverable }) => {
+      setOperationWarning(unrecoverable > 0);
+      setMessage(`Repair completed: ${repaired} repaired, ${unrecoverable} unrecoverable.`);
       await health.refetch();
     },
   });
@@ -35,7 +45,9 @@ export const VolumeRow = ({ volume }: { readonly volume: Volume }) => {
         {health.data?.unavailable.length ? (
           <small className="danger-text">Unavailable: {health.data.unavailable.join(", ")}</small>
         ) : null}
-        <small>{message ?? "Last scrub: not run in this session"}</small>
+        <small className={operationWarning ? "danger-text" : undefined}>
+          {message ?? "Last scrub: not run in this session"}
+        </small>
       </div>
       <div className="row-actions">
         <span className={`state-label ${health.data?.status === "degraded" ? "danger-state" : ""}`}>
@@ -51,16 +63,16 @@ export const VolumeRow = ({ volume }: { readonly volume: Volume }) => {
         </button>
         <button
           className="button quiet"
-          disabled={repair.isPending || health.data?.status !== "degraded"}
+          disabled={repair.isPending || health.data?.status !== "healthy"}
           onClick={() => {
             if (window.confirm(`Repair mirror "${volume.id}" from its healthy replicas?`)) {
               repair.mutate();
             }
           }}
           title={
-            health.data?.status === "degraded"
-              ? "Restore unavailable replicas from a healthy member"
-              : "Repair becomes available when a mirror is degraded"
+            health.data?.status === "healthy"
+              ? "Restore corrupt or missing replicas from a healthy member"
+              : "Repair requires both mirror members to be available"
           }
           type="button"
         >

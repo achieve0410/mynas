@@ -76,6 +76,10 @@ photo library. The paths are not created, mounted, or modified by setup.
 The SQLite catalog is stored at `<data-dir>/mynas.sqlite`. Mirror bytes are
 stored below each backend root.
 
+Native service binding is loopback-only unless the process explicitly sets
+`MYNAS_ALLOW_REMOTE=true`. A remote bind still uses plain HTTP; place it only
+on a trusted private network behind a separately managed TLS boundary.
+
 ### CLI authentication
 
 The CLI defaults to `http://127.0.0.1:7331`. Set `MYNAS_URL` to use another
@@ -108,9 +112,12 @@ Create a longer-lived revocable API token with the Settings page or:
 
 ```sh
 bun run mynas token-create --name automation
+bun run mynas token-list
+bun run mynas token-revoke TOKEN_ID
 ```
 
-The raw API token is shown only when it is created.
+The raw API token is shown only when it is created. Its ID, name, and creation
+time remain available in Settings and `token-list` so the owner can revoke it.
 
 ## Storage backends
 
@@ -143,7 +150,9 @@ Add an S3 backend from the Storage page. Enter:
 
 For example, start the native service with `MYNAS_S3_ACCESS_KEY` and
 `MYNAS_S3_SECRET_KEY` in its environment, then enter those names in the form.
-The bucket must already exist. MyNAS stores only the two names.
+Credential references must begin with `MYNAS_S3_`. The bucket must already
+exist, and non-loopback endpoints must use HTTPS. MyNAS stores only the two
+environment-variable names.
 
 For Docker or Kubernetes, inject the same variables through a local Compose
 override or a Kubernetes Secret. Never put their values in `compose.yaml`,
@@ -152,7 +161,9 @@ override or a Kubernetes Secret. Never put their values in `compose.yaml`,
 ## Docker Compose
 
 The default Compose service binds only to host loopback, persists metadata in
-the `mynas-data` volume, and mounts `./storage` at `/storage`.
+the `mynas-data` volume, and mounts `./storage` at `/storage`. The image opts
+into its internal `0.0.0.0` bind, but no host interface is exposed unless the
+operator publishes one.
 
 ```sh
 mkdir -p storage/disk-a storage/disk-b
@@ -203,7 +214,7 @@ docker compose --project-name mynas-minio-qa --profile qa down --volumes
 - a `mynas` namespace;
 - a 5 GiB `ReadWriteOnce` PVC for SQLite metadata;
 - one non-root `Recreate` deployment; and
-- a private `ClusterIP` service on port 7331.
+- a private `ClusterIP` service on port 7331 with namespace-scoped ingress.
 
 ```sh
 kubectl apply -f k8s/mynas.yaml
@@ -250,13 +261,17 @@ Docker and Kubernetes acceptance harnesses:
 ```sh
 bun run qa:docker
 bun run qa:kubernetes
+bun run qa:s3
 ```
 
-`qa:docker` creates isolated synthetic data, waits on the container health
-state, performs a literal mirrored file roundtrip, and removes its containers,
-volumes, ports, and temporary bind path. `qa:kubernetes` uses a server-side
-dry-run when a local cluster is available; otherwise it records strict pinned
-schema validation.
+`qa:docker` rebuilds the image from the current checkout, creates isolated
+synthetic data, waits on the container health state, performs a literal
+mirrored file roundtrip, and removes its containers, volumes, ports, and
+temporary bind path. `qa:kubernetes` uses a server-side dry-run when a local
+cluster is available; otherwise it records strict pinned schema validation.
+`qa:s3` provisions the synthetic MinIO profile, verifies a local-plus-S3
+mirror roundtrip, and removes its MinIO containers, volume, port, and temporary
+data.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) before opening a change.
 
@@ -265,6 +280,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) before opening a change.
 - Mirrors have exactly two members; there is no parity or multi-member RAID.
 - The Files page addresses known object paths; it is not a directory browser.
 - Photo ingestion is JPEG-only.
+- File uploads are limited to 64 MiB and photo uploads to 25 MiB in v0.1.0.
 - Repair and scrub operations are synchronous.
 - S3 buckets and local backend directories must already exist.
 - The Kubernetes manifest is single-replica and does not mount a data backend.

@@ -13,6 +13,7 @@ RUN bun run build:web
 FROM oven/bun:1.3.14-slim AS runtime
 WORKDIR /app
 
+ENV MYNAS_ALLOW_REMOTE=true
 ENV NODE_ENV=production
 
 COPY package.json bun.lock ./

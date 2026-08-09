@@ -4,7 +4,7 @@
   "description": "Local-first mirrored NAS and photo gallery for macOS",
   "homepage": "https://github.com/achieve0410/mynas#readme",
   "license": "Apache-2.0",
-  "private": false,
+  "private": true,
   "type": "module",
   "repository": {
     "type": "git",
@@ -22,12 +22,14 @@
     "format": "biome format --write .",
     "lint": "biome check .",
     "mynas": "bun apps/cli/src/main.ts",
+    "prepublishOnly": "bun -e 'throw new Error(\"MyNAS is not distributed through npm\")'",
     "qa:docker": "bun tests/packaging/docker-live.ts",
     "qa:kubernetes": "bun tests/packaging/kubernetes-validate.ts",
     "qa:packaging": "bun test tests/packaging/packaging.test.ts",
     "qa:release": "bun tests/packaging/release-audit.ts",
-    "test": "bun test",
-    "test:browser": "bun run build:web && playwright test",
+    "qa:s3": "bun tests/packaging/s3-live.ts",
+    "test": "bun test apps packages tests/api tests/cli tests/packaging",
+    "test:browser": "bun tests/browser/run.ts",
     "typecheck": "tsc --noEmit",
     "verify": "bun run lint && bun run typecheck && bun run build:web && bun run test"
   },
@@ -59,8 +61,5 @@
   },
   "engines": {
     "bun": ">=1.3.14"
-  },
-  "bin": {
-    "mynas": "apps/cli/src/main.ts"
   }
 }

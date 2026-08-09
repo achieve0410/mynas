@@ -118,6 +118,7 @@ describe("backend, mirror volume, and file API", () => {
     });
     expect(download.status).toBe(200);
     expect(await download.text()).toBe("0123456789");
+    expect(download.headers.get("cache-control")).toBe("no-store");
     expect(download.headers.get("etag")).toBe(`"sha256:${stored.blob.checksum}"`);
 
     const range = await app.request("/api/v1/files/photos/docs/readme.bin", {
@@ -129,6 +130,26 @@ describe("backend, mirror volume, and file API", () => {
     expect(range.status).toBe(206);
     expect(await range.text()).toBe("2345");
     expect(range.headers.get("content-range")).toBe("bytes 2-5/10");
+
+    const invalidRange = await app.request("/api/v1/files/photos/docs/readme.bin", {
+      headers: {
+        authorization: `Bearer ${token}`,
+        range: "bytes=10-11",
+      },
+    });
+    expect(invalidRange.status).toBe(416);
+    expect(invalidRange.headers.get("content-range")).toBe("bytes */10");
+
+    const oversized = await app.request("/api/v1/files/photos/docs/oversized.bin", {
+      body: "small",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-length": String(64 * 1_024 * 1_024 + 1),
+        "content-type": "application/octet-stream",
+      },
+      method: "PUT",
+    });
+    expect(oversized.status).toBe(413);
 
     const versions = await app.request("/api/v1/versions/photos/docs/readme.bin", {
       headers: { authorization: `Bearer ${token}` },
@@ -188,5 +209,85 @@ describe("backend, mirror volume, and file API", () => {
       headers: { authorization: `Bearer ${token}` },
     });
     expect(bodyText(await repairedDownload.arrayBuffer())).toBe("verified-bytes");
+  });
+
+  test("returns domain statuses for unavailable and racing backend registration", async () => {
+    const headers = {
+      authorization: `Bearer ${token}`,
+      "content-type": "application/json",
+    };
+    const missing = await app.request("/api/v1/backends", {
+      body: JSON.stringify({ id: "missing", kind: "local", root: join(dataDir, "absent") }),
+      headers,
+      method: "POST",
+    });
+    expect(missing.status).toBe(503);
+
+    const request = () =>
+      app.request("/api/v1/backends", {
+        body: JSON.stringify({ id: "race", kind: "local", root: diskA }),
+        headers,
+        method: "POST",
+      });
+    const statuses = (await Promise.all([request(), request()])).map(({ status }) => status).sort();
+    expect(statuses).toEqual([201, 409]);
+  });
+
+  test("rejects mirror aliases of one physical backend", async () => {
+    const headers = {
+      authorization: `Bearer ${token}`,
+      "content-type": "application/json",
+    };
+    const alias = await app.request("/api/v1/backends", {
+      body: JSON.stringify({ id: "disk-a-alias", kind: "local", root: diskA }),
+      headers,
+      method: "POST",
+    });
+    expect(alias.status).toBe(201);
+    const mirror = await app.request("/api/v1/volumes", {
+      body: JSON.stringify({
+        id: "unsafe",
+        kind: "mirror",
+        members: ["disk-a", "disk-a-alias"],
+      }),
+      headers,
+      method: "POST",
+    });
+    expect(mirror.status).toBe(400);
+  });
+
+  test("maps concurrent duplicate mirror creation to conflict", async () => {
+    const request = () =>
+      app.request("/api/v1/volumes", {
+        body: JSON.stringify({
+          id: "race-volume",
+          kind: "mirror",
+          members: ["disk-a", "disk-b"],
+        }),
+        headers: {
+          authorization: `Bearer ${token}`,
+          "content-type": "application/json",
+        },
+        method: "POST",
+      });
+    const statuses = (await Promise.all([request(), request()])).map(({ status }) => status).sort();
+    expect(statuses).toEqual([201, 409]);
+  });
+
+  test("reports a missing persisted backend as unavailable after restart", async () => {
+    await rename(diskB, join(dataDir, "disk-b-removed"));
+    const restarted = createApp({ dataDir, database, environment: {} });
+    const backends = await restarted.request("/api/v1/backends", {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(backends.status).toBe(200);
+    expect(await backends.json()).toContainEqual(
+      expect.objectContaining({ id: "disk-b", status: "unavailable" }),
+    );
+    const volume = await restarted.request("/api/v1/volumes/photos/status", {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(volume.status).toBe(200);
+    expect(await volume.json()).toEqual({ status: "degraded", unavailable: ["disk-b"] });
   });
 });

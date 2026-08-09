@@ -85,7 +85,7 @@ describe("AuthService", () => {
       .get();
     expect(stored?.token_hash).not.toBe(credential.token);
 
-    service.revokeApiToken(credential.id);
+    service.revokeApiToken(user.id, credential.id);
     expect(() => service.authenticateApiToken(credential.token)).toThrow("revoked");
   });
 });
