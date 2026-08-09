@@ -7,6 +7,7 @@ const exitCode = await runCli(process.argv.slice(2), {
   environment: process.env,
   fetch,
   readFile: async (path) => new Uint8Array(await readFile(path)),
+  readStdin: () => Bun.stdin.text(),
   serve: async (options) =>
     startServer({
       ...options,
