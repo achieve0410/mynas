@@ -1,0 +1,115 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: mynas
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mynas-data
+  namespace: mynas
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mynas
+  namespace: mynas
+  labels:
+    app.kubernetes.io/name: mynas
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: mynas
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: mynas
+    spec:
+      securityContext:
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: mynas
+          image: ghcr.io/achieve0410/mynas:0.1.0
+          imagePullPolicy: IfNotPresent
+          args:
+            - --data-dir
+            - /data
+            - --host
+            - 0.0.0.0
+            - --port
+            - "7331"
+          env:
+            - name: MYNAS_LOG_LEVEL
+              value: info
+          ports:
+            - name: http
+              containerPort: 7331
+              protocol: TCP
+          readinessProbe:
+            httpGet:
+              path: /api/v1/health
+              port: http
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /api/v1/health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            readOnlyRootFilesystem: true
+            runAsGroup: 1000
+            runAsNonRoot: true
+            runAsUser: 1000
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: mynas-data
+        - name: tmp
+          emptyDir:
+            sizeLimit: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mynas
+  namespace: mynas
+  labels:
+    app.kubernetes.io/name: mynas
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: mynas
+  ports:
+    - name: http
+      port: 7331
+      targetPort: http

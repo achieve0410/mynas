@@ -1,20 +1,75 @@
 name: mynas
 
 services:
+  mynas:
+    image: mynas:0.1.0
+    build:
+      context: .
+    environment:
+      MYNAS_LOG_LEVEL: ${MYNAS_LOG_LEVEL:-info}
+    ports:
+      - "127.0.0.1:${MYNAS_PORT:-7331}:7331"
+    volumes:
+      - mynas-data:/data
+      - type: bind
+        source: ${MYNAS_STORAGE_PATH:-./storage}
+        target: /storage
+    read_only: true
+    tmpfs:
+      - /tmp:size=268435456,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test:
+        - CMD
+        - bun
+        - -e
+        - >-
+          const response = await fetch('http://127.0.0.1:7331/api/v1/health');
+          if (!response.ok) process.exit(1);
+      interval: 10s
+      timeout: 3s
+      start_period: 10s
+      retries: 3
+    restart: unless-stopped
+
   minio:
     image: quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z
-    container_name: mynas-minio-qa
     profiles:
       - qa
     command: server /data --console-address ":9001"
     environment:
-      MINIO_ROOT_USER: ${MYNAS_QA_S3_ACCESS_KEY:?set MYNAS_QA_S3_ACCESS_KEY}
-      MINIO_ROOT_PASSWORD: ${MYNAS_QA_S3_SECRET_KEY:?set MYNAS_QA_S3_SECRET_KEY}
+      MINIO_ROOT_USER: ${MYNAS_QA_S3_ACCESS_KEY:-mynas-qa-access}
+      MINIO_ROOT_PASSWORD: ${MYNAS_QA_S3_SECRET_KEY:-mynas-qa-secret-only}
     ports:
       - "127.0.0.1:9000:9000"
       - "127.0.0.1:9001:9001"
     volumes:
       - minio-data:/data
 
+  minio-init:
+    image: quay.io/minio/mc:RELEASE.2025-04-16T18-13-26Z
+    profiles:
+      - qa
+    depends_on:
+      - minio
+    environment:
+      MYNAS_QA_S3_ACCESS_KEY: ${MYNAS_QA_S3_ACCESS_KEY:-mynas-qa-access}
+      MYNAS_QA_S3_SECRET_KEY: ${MYNAS_QA_S3_SECRET_KEY:-mynas-qa-secret-only}
+      MYNAS_TEST_S3_BUCKET: ${MYNAS_TEST_S3_BUCKET:-mynas-test}
+    entrypoint:
+      - /bin/sh
+      - -eu
+      - -c
+    command:
+      - >-
+        mc alias set qa http://minio:9000 "$${MYNAS_QA_S3_ACCESS_KEY}"
+        "$${MYNAS_QA_S3_SECRET_KEY}";
+        mc ready qa;
+        mc mb --ignore-existing "qa/$${MYNAS_TEST_S3_BUCKET}"
+
 volumes:
+  mynas-data:
   minio-data:
