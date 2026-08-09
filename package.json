@@ -12,6 +12,7 @@
   "scripts": {
     "format": "biome format --write .",
     "lint": "biome check .",
+    "mynas": "bun apps/cli/src/main.ts",
     "test": "bun test",
     "typecheck": "tsc --noEmit",
     "verify": "bun run lint && bun run typecheck && bun run test"
@@ -30,5 +31,8 @@
   },
   "engines": {
     "bun": ">=1.3.14"
+  },
+  "bin": {
+    "mynas": "apps/cli/src/main.ts"
   }
 }

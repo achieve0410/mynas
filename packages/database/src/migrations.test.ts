@@ -22,6 +22,8 @@ describe("migrate", () => {
       expect(tables).toContain("files");
       expect(tables).toContain("schema_migrations");
       expect(tables).toContain("sessions");
+      expect(tables).toContain("storage_backends");
+      expect(tables).toContain("storage_volumes");
       expect(tables).toContain("users");
     } finally {
       database.close();
