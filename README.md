@@ -261,6 +261,7 @@ Docker and Kubernetes acceptance harnesses:
 ```sh
 bun run qa:docker
 bun run qa:kubernetes
+bun run qa:s3
 ```
 
 `qa:docker` rebuilds the image from the current checkout, creates isolated
@@ -268,6 +269,9 @@ synthetic data, waits on the container health state, performs a literal
 mirrored file roundtrip, and removes its containers, volumes, ports, and
 temporary bind path. `qa:kubernetes` uses a server-side dry-run when a local
 cluster is available; otherwise it records strict pinned schema validation.
+`qa:s3` provisions the synthetic MinIO profile, verifies a local-plus-S3
+mirror roundtrip, and removes its MinIO containers, volume, port, and temporary
+data.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) before opening a change.
 

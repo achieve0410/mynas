@@ -101,6 +101,12 @@ describe("distribution packaging", () => {
     expect(source).toContain('"--build"');
   });
 
+  test("S3 live QA records mixed-mirror cleanup", async () => {
+    const source = await readFile(resolve(repositoryRoot, "tests/packaging/s3-live.ts"), "utf8");
+    expect(source).toContain("S3_LIVE_QA_PASS=1");
+    expect(source).toContain("containers-volumes-port-temp-absent");
+  });
+
   test("Kubernetes renders one persistent non-root replica", async () => {
     const source = await readFile(resolve(repositoryRoot, "k8s/mynas.yaml"), "utf8");
     const manifests = z
