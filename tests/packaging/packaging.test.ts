@@ -109,6 +109,16 @@ describe("distribution packaging", () => {
     expect(source).toContain("containers-volumes-port-temp-absent");
   });
 
+  test("release publication is manually recoverable with its required Go toolchain", async () => {
+    const source = await readFile(
+      resolve(repositoryRoot, ".github/workflows/release-container.yml"),
+      "utf8",
+    );
+    expect(source).toContain("workflow_dispatch:");
+    expect(source).toContain("go-version: 1.25.4");
+    expect(source).toContain("inputs.version || github.ref_name");
+  });
+
   test("Kubernetes renders one persistent non-root replica", async () => {
     const source = await readFile(resolve(repositoryRoot, "k8s/mynas.yaml"), "utf8");
     const manifests = z
