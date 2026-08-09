@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-import { SESSION_KEY, sessionToken } from "./api";
+import { api, SESSION_KEY, sessionToken } from "./api";
 import { AppShell } from "./components/shell";
 import { AlbumsPage } from "./pages/albums-page";
 import { AuthPage } from "./pages/auth-page";
@@ -40,8 +40,15 @@ export const App = () => {
   return (
     <AppShell
       onLogout={() => {
-        window.localStorage.removeItem(SESSION_KEY);
-        refreshSession();
+        void api
+          .logout()
+          .catch((error: unknown) => {
+            console.error("Unable to revoke the server session during sign-out", error);
+          })
+          .finally(() => {
+            window.localStorage.removeItem(SESSION_KEY);
+            refreshSession();
+          });
       }}
       path={path}
     >

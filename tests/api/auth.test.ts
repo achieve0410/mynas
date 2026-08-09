@@ -108,6 +108,19 @@ describe("owner authentication API", () => {
       ).status,
     ).toBe(401);
 
+    const logout = await app.request("/api/v1/logout", {
+      headers: { authorization: `Bearer ${session.token}` },
+      method: "POST",
+    });
+    expect(logout.status).toBe(204);
+    expect(
+      (
+        await app.request("/api/v1/system/status", {
+          headers: { authorization: `Bearer ${session.token}` },
+        })
+      ).status,
+    ).toBe(401);
+
     const persisted = JSON.stringify(database.query("SELECT password_hash FROM users").all());
     expect(persisted).not.toContain("synthetic owner passphrase");
     expect(persisted).not.toContain(apiToken.token);
