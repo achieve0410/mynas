@@ -1,17 +1,14 @@
 import { createHash } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
-import { type APIRequestContext, expect, test } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import sharp from "sharp";
 import { z } from "zod";
 
 import { syntheticJpeg, syntheticJpegSha256 } from "../fixtures/synthetic-photo";
+import { prepareOwnerAndMirror, syntheticJpegFilename } from "./photo-setup";
 
-const DATA_DIR = "/tmp/mynas-playwright";
 const ARTIFACT_DIR = ".artifacts/qa/photos";
-const fixtureFilename = "합성-풍경-長い写真.jpg";
-const OWNER_PASSWORD = "synthetic browser owner passphrase";
 
-const loginSchema = z.object({ token: z.string().min(32) });
 const ingestSchema = z.object({
   job: z.object({
     id: z.string().uuid(),
@@ -23,41 +20,6 @@ const ingestSchema = z.object({
     id: z.string().uuid(),
   }),
 });
-
-const authorize = (token: string): Record<string, string> => ({
-  authorization: `Bearer ${token}`,
-});
-
-const prepareOwnerAndMirror = async (request: APIRequestContext): Promise<string> => {
-  await mkdir(`${DATA_DIR}/disk-a`, { recursive: true });
-  await mkdir(`${DATA_DIR}/disk-b`, { recursive: true });
-
-  const setup = await request.post("/api/v1/setup", {
-    data: { password: OWNER_PASSWORD, username: "owner" },
-  });
-  expect(setup.status()).toBe(201);
-
-  const login = await request.post("/api/v1/login", {
-    data: { password: OWNER_PASSWORD, username: "owner" },
-  });
-  expect(login.status()).toBe(200);
-  const token = loginSchema.parse(await login.json()).token;
-
-  for (const id of ["disk-a", "disk-b"]) {
-    const backend = await request.post("/api/v1/backends", {
-      data: { id, kind: "local", root: `${DATA_DIR}/${id}` },
-      headers: authorize(token),
-    });
-    expect(backend.status()).toBe(201);
-  }
-
-  const volume = await request.post("/api/v1/volumes", {
-    data: { id: "photos", kind: "mirror", members: ["disk-a", "disk-b"] },
-    headers: authorize(token),
-  });
-  expect(volume.status()).toBe(201);
-  return token;
-};
 
 test("photo flagship completes the real browser journey", async ({ browser, page, request }) => {
   const token = await prepareOwnerAndMirror(request);
@@ -79,7 +41,7 @@ test("photo flagship completes the real browser journey", async ({ browser, page
   await page.getByTestId("photo-upload").setInputFiles({
     buffer: Buffer.from(syntheticJpeg()),
     mimeType: "image/jpeg",
-    name: fixtureFilename,
+    name: syntheticJpegFilename,
   });
   const uploadResponse = await uploadCompleted;
   expect(uploadResponse.status()).toBe(201);
@@ -156,12 +118,12 @@ test("photo flagship completes the real browser journey", async ({ browser, page
   await expect(mobileLightbox).toBeVisible();
   await expect(mobileLightbox.getByRole("img", { name: portraitFilename })).toBeVisible();
   await page.keyboard.press("ArrowRight");
-  await expect(mobileLightbox.getByText(fixtureFilename, { exact: true })).toBeVisible();
+  await expect(mobileLightbox.getByText(syntheticJpegFilename, { exact: true })).toBeVisible();
   await page.keyboard.press("ArrowLeft");
   await expect(mobileLightbox.getByText(portraitFilename, { exact: true })).toBeVisible();
   await page.screenshot({ fullPage: true, path: `${ARTIFACT_DIR}/lightbox-mobile.png` });
   await page.keyboard.press("ArrowRight");
-  await expect(mobileLightbox.getByRole("img", { name: fixtureFilename })).toBeVisible();
+  await expect(mobileLightbox.getByRole("img", { name: syntheticJpegFilename })).toBeVisible();
   const downloadStarted = page.waitForEvent("download");
   await page.getByTestId("download-original").click();
   const download = await downloadStarted;
@@ -268,7 +230,7 @@ test("photo flagship completes the real browser journey", async ({ browser, page
         albumPhotoCount: 1,
         completedAt: new Date().toISOString(),
         degradedWriteGate: "upload-disabled",
-        fixture: fixtureFilename,
+        fixture: syntheticJpegFilename,
         jobStatus: ingest.job.status,
         keyboardLightbox: "open-enter-close-escape",
         mobileViewport: { height: 844, horizontalOverflow: false, width: 390 },
