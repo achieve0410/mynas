@@ -18,6 +18,8 @@ describe("migrate", () => {
         .map(({ name }) => name);
 
       expect(tables).toContain("api_tokens");
+      expect(tables).toContain("file_versions");
+      expect(tables).toContain("files");
       expect(tables).toContain("schema_migrations");
       expect(tables).toContain("sessions");
       expect(tables).toContain("users");
