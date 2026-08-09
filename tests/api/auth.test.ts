@@ -38,6 +38,10 @@ describe("owner authentication API", () => {
   });
 
   test("requires authentication for system status", async () => {
+    const health = await app.request("/api/v1/health");
+    expect(health.status).toBe(200);
+    expect(await health.json()).toEqual({ status: "ok" });
+
     const response = await app.request("/api/v1/system/status");
     expect(response.status).toBe(401);
   });

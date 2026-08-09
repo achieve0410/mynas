@@ -157,6 +157,15 @@ export class PhotoStore {
       .map(toPhoto);
   }
 
+  public listAlbums(): readonly Album[] {
+    return this.database
+      .query<AlbumRow, []>(
+        "SELECT id, name, created_at FROM photo_albums ORDER BY created_at DESC, id",
+      )
+      .all()
+      .map(({ id }) => this.getAlbum(id));
+  }
+
   public recordCompletedJob(photoId: string): PhotoJob {
     const job: PhotoJob = {
       error: null,

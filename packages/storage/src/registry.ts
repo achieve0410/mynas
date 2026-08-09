@@ -161,6 +161,40 @@ export class StorageRegistry {
     };
   }
 
+  public async listBackends() {
+    const configs = this.database
+      .query<BackendRow, []>("SELECT config_json FROM storage_backends ORDER BY created_at, id")
+      .all()
+      .map(({ config_json }) => backendConfigSchema.parse(JSON.parse(config_json)));
+    return Promise.all(
+      configs.map(async (config) => {
+        const health = await (await this.getBackend(config.id)).probe();
+        return health.status === "healthy"
+          ? {
+              availableBytes: health.availableBytes,
+              capacityBytes: health.capacityBytes,
+              id: config.id,
+              kind: config.kind,
+              status: health.status,
+            }
+          : { id: config.id, kind: config.kind, reason: health.reason, status: health.status };
+      }),
+    );
+  }
+
+  public listVolumes() {
+    return this.database
+      .query<{ readonly id: string; readonly members_json: string }, []>(
+        "SELECT id, members_json FROM storage_volumes ORDER BY created_at, id",
+      )
+      .all()
+      .map(({ id, members_json }) => ({
+        id,
+        kind: "mirror",
+        members: membersSchema.parse(JSON.parse(members_json)),
+      }));
+  }
+
   private async createBackend(config: BackendConfig): Promise<StorageBackend> {
     if (config.kind === "local") {
       const backend = new LocalDirectoryBackend(config.id, config.root);

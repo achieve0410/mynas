@@ -133,6 +133,10 @@ export class PhotoService {
   public listTimeline(): readonly PhotoRecord[] {
     return this.store.listTimeline();
   }
+
+  public listAlbums(): readonly Album[] {
+    return this.store.listAlbums();
+  }
 }
 
 const checksum = (contents: Uint8Array): string =>

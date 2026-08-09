@@ -101,13 +101,14 @@ describe("photo API", () => {
       headers: {
         authorization: `Bearer ${token}`,
         "content-type": "image/jpeg",
-        "x-mynas-filename": "synthetic-landscape.jpg",
+        "x-mynas-filename": encodeURIComponent("합성-풍경.jpg"),
       },
       method: "POST",
     });
     expect(uploaded.status).toBe(201);
     const ingest = ingestSchema.parse(await uploaded.json());
     expect(ingest.photo.checksum).toBe(syntheticJpegSha256());
+    expect(ingest.photo.filename).toBe("합성-풍경.jpg");
 
     const job = await app.request(`/api/v1/photo-jobs/${ingest.job.id}`, {
       headers: { authorization: `Bearer ${token}` },
@@ -132,7 +133,9 @@ describe("photo API", () => {
     const original = await app.request(`/api/v1/photos/${ingest.photo.id}/original`, {
       headers: { authorization: `Bearer ${token}` },
     });
-    expect(original.headers.get("content-disposition")).toContain("synthetic-landscape.jpg");
+    expect(original.headers.get("content-disposition")).toContain(
+      encodeURIComponent("합성-풍경.jpg"),
+    );
     expect(sha256(await original.arrayBuffer())).toBe(syntheticJpegSha256());
 
     const createdAlbum = await app.request("/api/v1/albums", {
@@ -154,6 +157,17 @@ describe("photo API", () => {
       name: "Synthetic QA",
       photos: [expect.objectContaining({ id: ingest.photo.id })],
     });
+
+    const albums = await app.request("/api/v1/albums", {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(albums.status).toBe(200);
+    expect(await albums.json()).toEqual([
+      expect.objectContaining({
+        id: album.id,
+        photos: [expect.objectContaining({ id: ingest.photo.id })],
+      }),
+    ]);
   });
 
   test("requires owner authentication and rejects invalid image content", async () => {

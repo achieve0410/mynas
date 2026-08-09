@@ -4,7 +4,17 @@ import { PhotoService } from "../../../packages/photos/src/photos";
 
 import type { AppInstance, AppServices } from "./types";
 
-const filenameSchema = z.string().min(1).max(255);
+const filenameSchema = z
+  .string()
+  .transform((encoded, context) => {
+    try {
+      return decodeURIComponent(encoded);
+    } catch {
+      context.addIssue({ code: "custom", message: "filename must be URI encoded" });
+      return z.NEVER;
+    }
+  })
+  .pipe(z.string().min(1).max(255));
 const albumSchema = z.object({ name: z.string().trim().min(1).max(120) });
 
 const exactArrayBuffer = (contents: Uint8Array): ArrayBuffer => {
@@ -55,6 +65,10 @@ export const registerPhotoRoutes = (app: AppInstance, services: AppServices): vo
     const body = albumSchema.parse(await context.req.json());
     return context.json((await serviceFor(services)).createAlbum(body.name), 201);
   });
+
+  app.get("/api/v1/albums", async (context) =>
+    context.json((await serviceFor(services)).listAlbums()),
+  );
 
   app.get("/api/v1/albums/:id", async (context) =>
     context.json((await serviceFor(services)).getAlbum(context.req.param("id"))),
