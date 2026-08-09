@@ -33,6 +33,8 @@ const authenticate = (services: AppServices, token: string) => {
 };
 
 export const registerPublicAuthRoutes = (app: AppInstance, services: AppServices): void => {
+  app.get("/api/v1/health", (context) => context.json({ status: "ok" }));
+
   app.get("/api/v1/setup/status", (context) => {
     const count = services.database
       .query<{ readonly count: number }, []>("SELECT COUNT(*) AS count FROM users")

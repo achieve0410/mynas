@@ -73,6 +73,10 @@ const exactArrayBuffer = (contents: Uint8Array): ArrayBuffer => {
 };
 
 export const registerStorageRoutes = (app: AppInstance, services: AppServices): void => {
+  app.get("/api/v1/backends", async (context) =>
+    context.json(await services.registry.listBackends()),
+  );
+
   app.post("/api/v1/backends", async (context) => {
     const config: BackendConfig = backendSchema.parse(await context.req.json());
     const health = await services.registry.addBackend(config);
@@ -83,6 +87,8 @@ export const registerStorageRoutes = (app: AppInstance, services: AppServices): 
     const backend = await services.registry.getBackend(context.req.param("id"));
     return context.json(await backend.probe());
   });
+
+  app.get("/api/v1/volumes", (context) => context.json(services.registry.listVolumes()));
 
   app.post("/api/v1/volumes", async (context) => {
     const body = volumeSchema.parse(await context.req.json());

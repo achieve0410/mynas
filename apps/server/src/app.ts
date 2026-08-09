@@ -13,6 +13,7 @@ import { errorResponse } from "./errors";
 import { registerPhotoRoutes } from "./photo-routes";
 import { registerStorageRoutes } from "./storage-routes";
 import type { AppEnvironment, AppServices } from "./types";
+import { registerWebRoutes } from "./web-routes";
 
 export type CreateAppOptions = {
   readonly dataDir: string;
@@ -36,6 +37,7 @@ export const createApp = (options: CreateAppOptions): Hono<AppEnvironment> => {
   registerProtectedAuthRoutes(app, services);
   registerStorageRoutes(app, services);
   registerPhotoRoutes(app, services);
+  registerWebRoutes(app);
 
   return app;
 };

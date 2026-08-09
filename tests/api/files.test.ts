@@ -72,6 +72,28 @@ describe("backend, mirror volume, and file API", () => {
       method: "POST",
     });
     expect(volume.status).toBe(201);
+
+    const listedBackends = await app.request("/api/v1/backends", {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(listedBackends.status).toBe(200);
+    const backendSummaries = (await listedBackends.json()) as readonly Record<string, unknown>[];
+    expect(backendSummaries).toEqual([
+      expect.objectContaining({ id: "disk-a", kind: "local", status: "healthy" }),
+      expect.objectContaining({ id: "disk-b", kind: "local", status: "healthy" }),
+    ]);
+    for (const backend of backendSummaries) {
+      expect(backend.capacityBytes).toBeNumber();
+      expect(backend.availableBytes).toBeNumber();
+    }
+
+    const listedVolumes = await app.request("/api/v1/volumes", {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(listedVolumes.status).toBe(200);
+    expect(await listedVolumes.json()).toEqual([
+      { id: "photos", kind: "mirror", members: ["disk-a", "disk-b"] },
+    ]);
   });
 
   afterEach(async () => {

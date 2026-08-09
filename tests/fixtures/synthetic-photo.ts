@@ -1,7 +1,9 @@
+import { createHash } from "node:crypto";
+
 const JPEG_BASE64 =
   "/9j/2wBDAAMCAgMCAgMDAwMEAwMEBQgFBQQEBQoHBwYIDAoMDAsKCwsNDhIQDQ4RDgsLEBYQERMUFRUVDA8XGBYUGBIUFRT/2wBDAQMEBAUEBQkFBQkUDQsNFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBT/wAARCAADAAQDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAX/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAABwj/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwCwAP0eP//Z";
 
 export const syntheticJpeg = (): Uint8Array => new Uint8Array(Buffer.from(JPEG_BASE64, "base64"));
 
 export const syntheticJpegSha256 = (): string =>
-  new Bun.CryptoHasher("sha256").update(syntheticJpeg()).digest("hex");
+  createHash("sha256").update(syntheticJpeg()).digest("hex");

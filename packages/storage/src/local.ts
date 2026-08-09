@@ -11,6 +11,7 @@ import {
 import { dirname, isAbsolute, join, sep } from "node:path";
 
 import type { BackendHealth, ByteRange, StorageBackend, StoredObject } from "./adapter";
+import { filesystemIdentity, localBackendHealth } from "./local-health";
 
 export type LocalStorageErrorCode =
   | "backend_unavailable"
@@ -30,8 +31,6 @@ export class LocalStorageError extends Error {
 
 const isNodeError = (error: unknown): error is NodeJS.ErrnoException =>
   error instanceof Error && "code" in error;
-
-const filesystemIdentity = (device: number, inode: number): string => `${device}:${inode}`;
 
 const parseKey = (key: string): readonly string[] => {
   if (key.length === 0 || key.includes("\0") || key.includes("\\") || isAbsolute(key)) {
@@ -117,7 +116,7 @@ export class LocalDirectoryBackend implements StorageBackend {
       if (currentRoot !== this.canonicalRoot || currentIdentity !== this.rootIdentity) {
         return { reason: "backend filesystem identity changed", status: "unavailable" };
       }
-      return { filesystemIdentity: currentIdentity, status: "healthy" };
+      return localBackendHealth(currentRoot, currentIdentity);
     } catch (error) {
       if (isNodeError(error) && (error.code === "ENOENT" || error.code === "ENOTDIR")) {
         return { reason: "backend root is unavailable", status: "unavailable" };

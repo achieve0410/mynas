@@ -1,5 +1,7 @@
 export type BackendHealth =
   | {
+      readonly availableBytes?: number;
+      readonly capacityBytes?: number;
       readonly status: "healthy";
       readonly filesystemIdentity?: string;
     }
