@@ -2,9 +2,17 @@
   "name": "mynas",
   "version": "0.1.0",
   "description": "Local-first mirrored NAS and photo gallery for macOS",
+  "homepage": "https://github.com/achieve0410/mynas#readme",
   "license": "Apache-2.0",
   "private": false,
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/achieve0410/mynas.git"
+  },
+  "bugs": {
+    "url": "https://github.com/achieve0410/mynas/issues"
+  },
   "workspaces": [
     "apps/*",
     "packages/*"

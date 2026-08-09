@@ -66,13 +66,12 @@ Routes:
 
 | Route | Purpose | Dominant region |
 | --- | --- | --- |
-| `/setup` | Create the first local owner | Single focused setup panel |
-| `/login` | Authenticate an existing owner | Single focused login panel |
+| `/setup`, `/login` | Shared setup/login gate selected by service state | Single focused auth panel |
 | `/` | Assess safety and resume recent work | Volume health board |
-| `/storage` | Manage backends, mirrors, scrub, repair | Volume and member table |
-| `/files` | Browse and transfer objects | File table |
+| `/storage` | Manage backends, mirrors, scrub, repair | Backend and mirror controls |
+| `/files` | Transfer or delete a known object path | Exact-path transfer panel |
 | `/photos` | Browse the chronological photo library | Timeline grid |
-| `/albums` | Browse and create collections | Album list and selected album |
+| `/albums` | Browse collections created from photo selection | Album list |
 | `/settings` | API tokens and service information | Settings sections |
 
 ## 4. App Shell
