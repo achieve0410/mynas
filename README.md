@@ -29,4 +29,3 @@ The complete operator guide and release notes will be published with v0.1.0.
 ## License
 
 Apache-2.0. See [LICENSE](LICENSE).
-

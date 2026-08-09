@@ -13,4 +13,3 @@ personal data.
 
 The project will acknowledge a complete report within seven days and publish a
 coordinated advisory when a fix is available.
-

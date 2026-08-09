@@ -15,4 +15,3 @@ bun run test
 Do not include credentials, tokens, private file names, databases, or personal
 photos in issues, tests, fixtures, logs, or commits. Tests must use generated
 or clearly synthetic data.
-
