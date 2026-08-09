@@ -13,7 +13,7 @@ import {
 
 const artifactPath = resolve(repositoryRoot, ".artifacts/qa/packaging/docker-live.json");
 const ownerPassword = "synthetic docker owner passphrase";
-const projectName = "mynas-live-qa";
+const projectName = `mynas-live-qa-${process.pid}`;
 
 const sessionSchema = z.object({ token: z.string().min(32) });
 const healthSchema = z.object({ status: z.literal("ok") });
@@ -33,7 +33,7 @@ await Promise.all([
 ]);
 const composeEnvironment = {
   COMPOSE_PROJECT_NAME: projectName,
-  MYNAS_PORT: "7331",
+  MYNAS_PORT: "0",
   MYNAS_STORAGE_PATH: storageRoot,
 };
 const compose = (arguments_: readonly string[]) =>
@@ -41,12 +41,19 @@ const compose = (arguments_: readonly string[]) =>
 
 let primaryError: unknown;
 let evidence: Readonly<Record<string, unknown>> | null = null;
+let hostPort: number | null = null;
 try {
   requireSuccess(
     await compose(["up", "--build", "--detach", "--wait", "--wait-timeout", "180", "mynas"]),
     "docker compose up",
   );
-  const health = await requestJson("/api/v1/health", 200, healthSchema);
+  const published = requireSuccess(await compose(["port", "mynas", "7331"]), "published port");
+  hostPort = Number(published.slice(published.lastIndexOf(":") + 1));
+  if (!Number.isInteger(hostPort) || hostPort <= 0) {
+    throw new Error(`invalid published port: ${published}`);
+  }
+  const baseUrl = `http://127.0.0.1:${hostPort}`;
+  const health = await requestJson("/api/v1/health", 200, healthSchema, {}, baseUrl);
 
   const setupScript = `
     const response = await fetch("http://127.0.0.1:7331/api/v1/setup", {
@@ -61,11 +68,17 @@ try {
     "loopback owner setup",
   );
 
-  const session = await requestJson("/api/v1/login", 200, sessionSchema, {
-    body: JSON.stringify({ password: ownerPassword, username: "owner" }),
-    headers: { "content-type": "application/json" },
-    method: "POST",
-  });
+  const session = await requestJson(
+    "/api/v1/login",
+    200,
+    sessionSchema,
+    {
+      body: JSON.stringify({ password: ownerPassword, username: "owner" }),
+      headers: { "content-type": "application/json" },
+      method: "POST",
+    },
+    baseUrl,
+  );
   const headers = {
     authorization: `Bearer ${session.token}`,
     "content-type": "application/json",
@@ -80,28 +93,35 @@ try {
         headers,
         method: "POST",
       },
+      baseUrl,
     );
   }
-  await requestJson("/api/v1/volumes", 201, z.object({ id: z.literal("docker-qa") }), {
-    body: JSON.stringify({
-      id: "docker-qa",
-      kind: "mirror",
-      members: ["disk-a", "disk-b"],
-    }),
-    headers,
-    method: "POST",
-  });
+  await requestJson(
+    "/api/v1/volumes",
+    201,
+    z.object({ id: z.literal("docker-qa") }),
+    {
+      body: JSON.stringify({
+        id: "docker-qa",
+        kind: "mirror",
+        members: ["disk-a", "disk-b"],
+      }),
+      headers,
+      method: "POST",
+    },
+    baseUrl,
+  );
   const [diskA, diskB, volume] = await Promise.all([
-    requestJson("/api/v1/backends/disk-a/probe", 200, backendHealthSchema, { headers }),
-    requestJson("/api/v1/backends/disk-b/probe", 200, backendHealthSchema, { headers }),
-    requestJson("/api/v1/volumes/docker-qa/status", 200, volumeHealthSchema, { headers }),
+    requestJson("/api/v1/backends/disk-a/probe", 200, backendHealthSchema, { headers }, baseUrl),
+    requestJson("/api/v1/backends/disk-b/probe", 200, backendHealthSchema, { headers }, baseUrl),
+    requestJson("/api/v1/volumes/docker-qa/status", 200, volumeHealthSchema, { headers }, baseUrl),
   ]);
 
   const source = new TextEncoder().encode("MyNAS Docker QA v0.1\n");
   const sourcePath = join(qaRoot, "source.bin");
   const downloadPath = join(qaRoot, "download.bin");
   await writeFile(sourcePath, source);
-  const uploaded = await fetch("http://127.0.0.1:7331/api/v1/files/docker-qa/qa/roundtrip.bin", {
+  const uploaded = await fetch(`${baseUrl}/api/v1/files/docker-qa/qa/roundtrip.bin`, {
     body: exactArrayBuffer(source),
     headers: { authorization: `Bearer ${session.token}` },
     method: "PUT",
@@ -109,7 +129,7 @@ try {
   if (uploaded.status !== 201) {
     throw new Error(`Docker file upload returned ${uploaded.status}: ${await uploaded.text()}`);
   }
-  const downloaded = await fetch("http://127.0.0.1:7331/api/v1/files/docker-qa/qa/roundtrip.bin", {
+  const downloaded = await fetch(`${baseUrl}/api/v1/files/docker-qa/qa/roundtrip.bin`, {
     headers: { authorization: `Bearer ${session.token}` },
   });
   if (downloaded.status !== 200) {
@@ -193,9 +213,12 @@ const volumes = await command(
 if (volumes.exitCode !== 0 || volumes.stdout.trim().length > 0) {
   cleanupErrors.push(new Error("Docker QA volumes remain"));
 }
-const port = await command(["lsof", "-nP", "-iTCP:7331", "-sTCP:LISTEN"], {});
-if (port.exitCode === 0 || port.stdout.trim().length > 0) {
-  cleanupErrors.push(new Error("Docker QA port 7331 remains"));
+const port =
+  hostPort === null
+    ? null
+    : await command(["lsof", "-nP", `-iTCP:${hostPort}`, "-sTCP:LISTEN"], {});
+if (port !== null && (port.exitCode === 0 || port.stdout.trim().length > 0)) {
+  cleanupErrors.push(new Error(`Docker QA port ${hostPort} remains`));
 }
 await rm(qaRoot, { force: true, recursive: true });
 

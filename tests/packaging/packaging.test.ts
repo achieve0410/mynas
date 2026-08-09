@@ -99,6 +99,8 @@ describe("distribution packaging", () => {
       "utf8",
     );
     expect(source).toContain('"--build"');
+    expect(source).toContain("process.pid");
+    expect(source).toContain('MYNAS_PORT: "0"');
   });
 
   test("S3 live QA records mixed-mirror cleanup", async () => {

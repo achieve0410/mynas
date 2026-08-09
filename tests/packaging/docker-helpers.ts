@@ -45,8 +45,9 @@ export const requestJson = async <Output>(
   expectedStatus: number,
   schema: z.ZodType<Output>,
   init: RequestInit = {},
+  baseUrl = "http://127.0.0.1:7331",
 ): Promise<Output> => {
-  const response = await fetch(`http://127.0.0.1:7331${path}`, init);
+  const response = await fetch(`${baseUrl}${path}`, init);
   const body: unknown = await response.json();
   if (response.status !== expectedStatus) {
     throw new Error(`${path} returned ${response.status}: ${JSON.stringify(body)}`);
