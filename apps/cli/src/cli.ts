@@ -21,6 +21,9 @@ export type CliDependencies = {
   readonly writeFile: (path: string, contents: Uint8Array) => Promise<void>;
 };
 
+const isLoopbackHost = (host: string): boolean =>
+  ["127.0.0.1", "::1", "[::1]", "localhost", "::ffff:127.0.0.1"].includes(host.toLowerCase());
+
 export const runCli = async (
   arguments_: readonly string[],
   dependencies: CliDependencies,
@@ -43,6 +46,9 @@ export const runCli = async (
     .action(async (options: { dataDir: string; host: string; port: string }) => {
       if (dependencies.serve === undefined) {
         throw new Error("serve dependency is unavailable");
+      }
+      if (!isLoopbackHost(options.host) && dependencies.environment.MYNAS_ALLOW_REMOTE !== "true") {
+        throw new Error("remote binding requires MYNAS_ALLOW_REMOTE=true");
       }
       await dependencies.serve({
         dataDir: options.dataDir,

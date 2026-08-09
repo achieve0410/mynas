@@ -74,6 +74,7 @@ describe("distribution packaging", () => {
   test("Dockerfile defines a non-root health-checked service", async () => {
     const dockerfile = await readFile(resolve(repositoryRoot, "Dockerfile"), "utf8");
     expect(dockerfile).toContain("USER bun");
+    expect(dockerfile).toContain("MYNAS_ALLOW_REMOTE=true");
     expect(dockerfile).toContain("HEALTHCHECK");
     expect(dockerfile).toContain('ENTRYPOINT ["bun", "apps/cli/src/main.ts", "serve"]');
     expect(dockerfile).toContain('"--host", "0.0.0.0"');

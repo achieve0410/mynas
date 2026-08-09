@@ -77,6 +77,31 @@ describe("mynas CLI", () => {
     }
   });
 
+  test("requires explicit opt-in before binding beyond loopback", async () => {
+    const servedHosts: string[] = [];
+    const base = createDependencies(async () => Response.json({}), [], new Map());
+    const withoutOptIn: CliDependencies = {
+      ...base,
+      serve: async ({ host }) => {
+        servedHosts.push(host);
+      },
+    };
+
+    expect(
+      await runCli(["serve", "--data-dir", "/tmp/mynas", "--host", "0.0.0.0"], withoutOptIn),
+    ).toBe(1);
+    expect(servedHosts).toEqual([]);
+
+    const withOptIn: CliDependencies = {
+      ...withoutOptIn,
+      environment: { ...withoutOptIn.environment, MYNAS_ALLOW_REMOTE: "true" },
+    };
+    expect(
+      await runCli(["serve", "--data-dir", "/tmp/mynas", "--host", "0.0.0.0"], withOptIn),
+    ).toBe(0);
+    expect(servedHosts).toEqual(["0.0.0.0"]);
+  });
+
   test("adds a local backend with bearer auth and stable JSON output", async () => {
     const output: string[] = [];
     const writes = new Map<string, Uint8Array>();

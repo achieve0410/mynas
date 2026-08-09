@@ -76,6 +76,10 @@ photo library. The paths are not created, mounted, or modified by setup.
 The SQLite catalog is stored at `<data-dir>/mynas.sqlite`. Mirror bytes are
 stored below each backend root.
 
+Native service binding is loopback-only unless the process explicitly sets
+`MYNAS_ALLOW_REMOTE=true`. A remote bind still uses plain HTTP; place it only
+on a trusted private network behind a separately managed TLS boundary.
+
 ### CLI authentication
 
 The CLI defaults to `http://127.0.0.1:7331`. Set `MYNAS_URL` to use another
@@ -157,7 +161,9 @@ override or a Kubernetes Secret. Never put their values in `compose.yaml`,
 ## Docker Compose
 
 The default Compose service binds only to host loopback, persists metadata in
-the `mynas-data` volume, and mounts `./storage` at `/storage`.
+the `mynas-data` volume, and mounts `./storage` at `/storage`. The image opts
+into its internal `0.0.0.0` bind, but no host interface is exposed unless the
+operator publishes one.
 
 ```sh
 mkdir -p storage/disk-a storage/disk-b
