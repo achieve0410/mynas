@@ -1,5 +1,6 @@
 import type { StorageBackend } from "./adapter";
 import type { BlobDescriptor, FileCatalog, FileVersion } from "./catalog";
+import { serializeReplicaWrite } from "./write-lock";
 
 export type MirrorMembers = readonly [StorageBackend, StorageBackend];
 export type ScrubIssueStatus = "corrupt" | "missing" | "unavailable";
@@ -83,27 +84,32 @@ export class MirrorVolume {
         size: contents.byteLength,
       };
       const [first, second] = this.members;
-      const [firstExisting, secondExisting] = await Promise.all([
-        first.stat(blob.key),
-        second.stat(blob.key),
-      ]);
-      const [firstWrite, secondWrite] = await Promise.allSettled([
-        first.put(blob.key, contents),
-        second.put(blob.key, contents),
-      ]);
-      if (firstWrite.status === "rejected" || secondWrite.status === "rejected") {
-        await this.rollbackNewReplica(first, blob.key, firstExisting, firstWrite);
-        await this.rollbackNewReplica(second, blob.key, secondExisting, secondWrite);
-        throw new MirrorError("write_failed", "mirror write failed");
-      }
+      return serializeReplicaWrite(
+        this.members.map((member) => `${member.id}\0${blob.key}`),
+        async () => {
+          const [firstExisting, secondExisting] = await Promise.all([
+            first.stat(blob.key),
+            second.stat(blob.key),
+          ]);
+          const [firstWrite, secondWrite] = await Promise.allSettled([
+            first.put(blob.key, contents),
+            second.put(blob.key, contents),
+          ]);
+          if (firstWrite.status === "rejected" || secondWrite.status === "rejected") {
+            await this.rollbackNewReplica(first, blob.key, firstExisting, firstWrite);
+            await this.rollbackNewReplica(second, blob.key, secondExisting, secondWrite);
+            throw new MirrorError("write_failed", "mirror write failed");
+          }
 
-      try {
-        return this.catalog.addVersion(path, blob);
-      } catch (error) {
-        await this.rollbackNewReplica(first, blob.key, firstExisting, firstWrite);
-        await this.rollbackNewReplica(second, blob.key, secondExisting, secondWrite);
-        throw error;
-      }
+          try {
+            return this.catalog.addVersion(path, blob);
+          } catch (error) {
+            await this.rollbackNewReplica(first, blob.key, firstExisting, firstWrite);
+            await this.rollbackNewReplica(second, blob.key, secondExisting, secondWrite);
+            throw error;
+          }
+        },
+      );
     });
   }
 

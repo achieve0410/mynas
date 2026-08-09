@@ -10,6 +10,7 @@ class MemoryBackend implements StorageBackend {
   public readonly kind = "local";
   public readonly objects = new Map<string, Uint8Array>();
   public available = true;
+  public beforeNextPut: (() => Promise<void>) | null = null;
   public failWrites = false;
 
   public constructor(public readonly id: string) {}
@@ -36,6 +37,11 @@ class MemoryBackend implements StorageBackend {
   }
 
   public async put(key: string, contents: Uint8Array): Promise<StoredObject> {
+    const beforePut = this.beforeNextPut;
+    this.beforeNextPut = null;
+    if (beforePut !== null) {
+      await beforePut();
+    }
     if (!this.available || this.failWrites) {
       throw new Error("backend write failed");
     }
@@ -135,5 +141,41 @@ describe("MirrorVolume", () => {
 
     await expect(volume.get("photos/lost.bin")).rejects.toThrow("unrecoverable");
     expect((await volume.scrub()).unrecoverable).toBe(1);
+  });
+
+  test("does not roll back a replica committed by another volume", async () => {
+    const failedMember = new MemoryBackend("failed");
+    const healthyMember = new MemoryBackend("healthy");
+    failedMember.failWrites = true;
+    const failingVolume = new MirrorVolume(
+      "failing",
+      [first, failedMember],
+      new FileCatalog(database, "failing"),
+    );
+    const committedVolume = new MirrorVolume(
+      "committed",
+      [first, healthyMember],
+      new FileCatalog(database, "committed"),
+    );
+    let releaseBlockedPut: () => void = () => undefined;
+    let reportBlockedPut: () => void = () => undefined;
+    const blockedPut = new Promise<void>((resolve) => {
+      releaseBlockedPut = resolve;
+    });
+    const putBlocked = new Promise<void>((resolve) => {
+      reportBlockedPut = resolve;
+    });
+    first.beforeNextPut = async () => {
+      reportBlockedPut();
+      await blockedPut;
+    };
+
+    const failingWrite = failingVolume.put("failed.bin", bytes("shared"));
+    await putBlocked;
+    await committedVolume.put("committed.bin", bytes("shared"));
+    releaseBlockedPut();
+
+    await expect(failingWrite).rejects.toThrow("mirror write failed");
+    expect((await committedVolume.scrub()).missing).toBe(0);
   });
 });
