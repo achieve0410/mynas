@@ -20,9 +20,9 @@ const resources = z
   .parse(Bun.YAML.parse(source))
   .map(({ kind, metadata }) => `${kind}/${metadata.name}`);
 
-let evidence: Readonly<Record<string, unknown>>;
-const kubectl = Bun.which("kubectl");
-if (kubectl === null) {
+const strictSchemaEvidence = async (
+  reason: "kubectl unavailable" | "local cluster unavailable",
+): Promise<Readonly<Record<string, unknown>>> => {
   const validator = Bun.spawn(
     [
       "docker",
@@ -60,28 +60,35 @@ if (kubectl === null) {
   if (counts?.[1] !== String(resources.length) || counts[2] !== "0" || counts[3] !== "0") {
     throw new Error(`unexpected kubeconform summary: ${summary}`);
   }
-  evidence = {
+  return {
     kubernetesVersion: "1.31.0",
     mode: "strict-schema-fallback",
-    reason: "kubectl unavailable",
+    reason,
     resources,
     summary,
     validatorImage,
   };
+};
+
+let evidence: Readonly<Record<string, unknown>>;
+const kubectl = Bun.which("kubectl");
+if (kubectl === null) {
+  evidence = await strictSchemaEvidence("kubectl unavailable");
 } else {
   const cluster = await command([kubectl, "cluster-info"], {});
   if (cluster.exitCode !== 0) {
-    throw new Error(`kubectl exists but no local cluster is reachable: ${cluster.stderr.trim()}`);
+    evidence = await strictSchemaEvidence("local cluster unavailable");
+  } else {
+    const dryRun = await command(
+      [kubectl, "apply", "--dry-run=server", "--validate=strict", "-f", manifestPath],
+      {},
+    );
+    evidence = {
+      mode: "server-dry-run",
+      resources,
+      summary: requireSuccess(dryRun, "Kubernetes server-side dry run"),
+    };
   }
-  const dryRun = await command(
-    [kubectl, "apply", "--dry-run=server", "--validate=strict", "-f", manifestPath],
-    {},
-  );
-  evidence = {
-    mode: "server-dry-run",
-    resources,
-    summary: requireSuccess(dryRun, "Kubernetes server-side dry run"),
-  };
 }
 
 const remaining = await command(
