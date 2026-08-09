@@ -23,6 +23,7 @@ export type StoredObject = {
 export interface StorageBackend {
   readonly id: string;
   readonly kind: "local" | "s3";
+  readonly replicaIdentity: string;
 
   delete(key: string): Promise<void>;
   get(key: string, range?: ByteRange): Promise<Uint8Array>;

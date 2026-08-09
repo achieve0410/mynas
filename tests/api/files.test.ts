@@ -210,4 +210,49 @@ describe("backend, mirror volume, and file API", () => {
     });
     expect(bodyText(await repairedDownload.arrayBuffer())).toBe("verified-bytes");
   });
+
+  test("returns domain statuses for unavailable and racing backend registration", async () => {
+    const headers = {
+      authorization: `Bearer ${token}`,
+      "content-type": "application/json",
+    };
+    const missing = await app.request("/api/v1/backends", {
+      body: JSON.stringify({ id: "missing", kind: "local", root: join(dataDir, "absent") }),
+      headers,
+      method: "POST",
+    });
+    expect(missing.status).toBe(503);
+
+    const request = () =>
+      app.request("/api/v1/backends", {
+        body: JSON.stringify({ id: "race", kind: "local", root: diskA }),
+        headers,
+        method: "POST",
+      });
+    const statuses = (await Promise.all([request(), request()])).map(({ status }) => status).sort();
+    expect(statuses).toEqual([201, 409]);
+  });
+
+  test("rejects mirror aliases of one physical backend", async () => {
+    const headers = {
+      authorization: `Bearer ${token}`,
+      "content-type": "application/json",
+    };
+    const alias = await app.request("/api/v1/backends", {
+      body: JSON.stringify({ id: "disk-a-alias", kind: "local", root: diskA }),
+      headers,
+      method: "POST",
+    });
+    expect(alias.status).toBe(201);
+    const mirror = await app.request("/api/v1/volumes", {
+      body: JSON.stringify({
+        id: "unsafe",
+        kind: "mirror",
+        members: ["disk-a", "disk-a-alias"],
+      }),
+      headers,
+      method: "POST",
+    });
+    expect(mirror.status).toBe(400);
+  });
 });

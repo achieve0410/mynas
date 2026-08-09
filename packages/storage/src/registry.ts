@@ -3,9 +3,9 @@ import { z } from "zod";
 
 import type { BackendHealth, StorageBackend } from "./adapter";
 import { FileCatalog } from "./catalog";
-import { LocalDirectoryBackend } from "./local";
+import { LocalDirectoryBackend, LocalStorageError } from "./local";
 import { MirrorVolume } from "./mirror";
-import { type S3BackendConfig, S3StorageBackend } from "./s3";
+import { type S3BackendConfig, S3StorageBackend, S3StorageError } from "./s3";
 
 const localConfigSchema = z.object({
   filesystemIdentity: z.string().min(1).optional(),
@@ -72,8 +72,21 @@ export class StorageRegistry {
     if (this.hasBackend(parsed.id)) {
       throw new RegistryError("conflict", "backend already exists");
     }
-    const backend = await this.createBackend(parsed);
-    const health = await backend.probe();
+    let backend: StorageBackend;
+    let health: BackendHealth;
+    try {
+      backend = await this.createBackend(parsed);
+      health = await backend.probe();
+    } catch (error) {
+      if (error instanceof LocalStorageError || error instanceof S3StorageError) {
+        const code = error.code === "backend_unavailable" ? "unavailable" : "invalid_config";
+        throw new RegistryError(code, error.message);
+      }
+      throw new RegistryError(
+        "unavailable",
+        error instanceof Error ? error.message : "backend is unavailable",
+      );
+    }
     if (health.status !== "healthy") {
       throw new RegistryError("unavailable", health.reason);
     }
@@ -81,9 +94,18 @@ export class StorageRegistry {
       parsed.kind === "local"
         ? { ...parsed, filesystemIdentity: health.filesystemIdentity }
         : parsed;
-    this.database
-      .query("INSERT INTO storage_backends (id, kind, config_json, created_at) VALUES (?, ?, ?, ?)")
-      .run(parsed.id, parsed.kind, JSON.stringify(persisted), this.now().toISOString());
+    try {
+      this.database
+        .query(
+          "INSERT INTO storage_backends (id, kind, config_json, created_at) VALUES (?, ?, ?, ?)",
+        )
+        .run(parsed.id, parsed.kind, JSON.stringify(persisted), this.now().toISOString());
+    } catch (error) {
+      if (error instanceof Error && error.message.includes("UNIQUE constraint failed")) {
+        throw new RegistryError("conflict", "backend already exists");
+      }
+      throw error;
+    }
     this.backends.set(parsed.id, backend);
     return health;
   }
@@ -97,6 +119,9 @@ export class StorageRegistry {
     }
     const first = await this.getBackend(members[0]);
     const second = await this.getBackend(members[1]);
+    if (first.replicaIdentity === second.replicaIdentity) {
+      throw new RegistryError("invalid_config", "mirror members must use distinct storage targets");
+    }
     const health = await Promise.all([first.probe(), second.probe()]);
     if (health.some((entry) => entry.status !== "healthy")) {
       throw new RegistryError("unavailable", "mirror member is unavailable");

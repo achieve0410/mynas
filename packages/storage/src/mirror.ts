@@ -85,7 +85,7 @@ export class MirrorVolume {
       };
       const [first, second] = this.members;
       return serializeReplicaWrite(
-        this.members.map((member) => `${member.id}\0${blob.key}`),
+        this.members.map((member) => `${member.replicaIdentity}\0${blob.key}`),
         async () => {
           const [firstExisting, secondExisting] = await Promise.all([
             first.stat(blob.key),

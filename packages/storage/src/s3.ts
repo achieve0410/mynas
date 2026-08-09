@@ -86,6 +86,7 @@ const validateEndpoint = (endpoint: string): void => {
 export class S3StorageBackend implements StorageBackend {
   public readonly id: string;
   public readonly kind = "s3";
+  public readonly replicaIdentity: string;
 
   private readonly client: S3ObjectClient;
   private readonly prefix: string;
@@ -105,6 +106,7 @@ export class S3StorageBackend implements StorageBackend {
     this.id = config.id;
     this.prefix =
       config.prefix === undefined ? "" : parseObjectPath(config.prefix, "object prefix").join("/");
+    this.replicaIdentity = `s3:${new URL(config.endpoint).toString()}\0${config.bucket}\0${this.prefix}`;
     this.client =
       client ??
       new Bun.S3Client({

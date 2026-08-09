@@ -17,7 +17,10 @@ class MemoryBackend implements StorageBackend {
   public readonly kind = "local";
   private readonly objects = new Map<string, Uint8Array>();
 
-  public constructor(public readonly id: string) {}
+  public constructor(
+    public readonly id: string,
+    public readonly replicaIdentity = id,
+  ) {}
 
   public async delete(key: string): Promise<void> {
     this.objects.delete(key);

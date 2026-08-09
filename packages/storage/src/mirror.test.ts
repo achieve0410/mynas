@@ -8,12 +8,15 @@ import { MirrorVolume } from "./mirror";
 
 class MemoryBackend implements StorageBackend {
   public readonly kind = "local";
-  public readonly objects = new Map<string, Uint8Array>();
   public available = true;
   public beforeNextPut: (() => Promise<void>) | null = null;
   public failWrites = false;
 
-  public constructor(public readonly id: string) {}
+  public constructor(
+    public readonly id: string,
+    public readonly replicaIdentity = id,
+    public readonly objects = new Map<string, Uint8Array>(),
+  ) {}
 
   public async delete(key: string): Promise<void> {
     this.objects.delete(key);
@@ -146,6 +149,7 @@ describe("MirrorVolume", () => {
   test("does not roll back a replica committed by another volume", async () => {
     const failedMember = new MemoryBackend("failed");
     const healthyMember = new MemoryBackend("healthy");
+    const firstAlias = new MemoryBackend("first-alias", first.replicaIdentity, first.objects);
     failedMember.failWrites = true;
     const failingVolume = new MirrorVolume(
       "failing",
@@ -154,7 +158,7 @@ describe("MirrorVolume", () => {
     );
     const committedVolume = new MirrorVolume(
       "committed",
-      [first, healthyMember],
+      [firstAlias, healthyMember],
       new FileCatalog(database, "committed"),
     );
     let releaseBlockedPut: () => void = () => undefined;

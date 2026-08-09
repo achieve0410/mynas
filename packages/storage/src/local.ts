@@ -56,6 +56,13 @@ export class LocalDirectoryBackend implements StorageBackend {
     private readonly expectedIdentity?: string,
   ) {}
 
+  public get replicaIdentity(): string {
+    if (this.rootIdentity === null) {
+      throw new LocalStorageError("backend_unavailable", "backend is not initialized");
+    }
+    return `local:${this.rootIdentity}`;
+  }
+
   public async initialize(): Promise<void> {
     const rootInfo = await lstat(this.configuredRoot);
     if (rootInfo.isSymbolicLink()) {

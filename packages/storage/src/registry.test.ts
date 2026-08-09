@@ -37,4 +37,28 @@ describe("StorageRegistry persistence", () => {
 
     expect(health.status).toBe("unavailable");
   });
+
+  test("rejects aliases of one physical target as mirror members", async () => {
+    const registry = new StorageRegistry(database, {});
+    await registry.addBackend({ id: "disk", kind: "local", root });
+    await registry.addBackend({ id: "alias", kind: "local", root });
+
+    await expect(registry.addMirror("unsafe", ["disk", "alias"])).rejects.toThrow(
+      "distinct storage targets",
+    );
+  });
+
+  test("maps concurrent duplicate registration to a conflict", async () => {
+    const registry = new StorageRegistry(database, {});
+    const registrations = await Promise.allSettled([
+      registry.addBackend({ id: "race", kind: "local", root }),
+      registry.addBackend({ id: "race", kind: "local", root }),
+    ]);
+
+    expect(registrations.filter(({ status }) => status === "fulfilled")).toHaveLength(1);
+    const rejected = registrations.find(({ status }) => status === "rejected");
+    expect(rejected?.status === "rejected" ? rejected.reason : null).toMatchObject({
+      code: "conflict",
+    });
+  });
 });
