@@ -1,11 +1,11 @@
 import { Database } from "bun:sqlite";
 import { chmod, mkdir } from "node:fs/promises";
 import { join } from "node:path";
-import pino from "pino";
 
 import { migrate } from "../../../packages/database/src/migrations";
 
 import { createApp } from "./app";
+import { createServiceLogger } from "./logging";
 
 export type StartServerOptions = {
   readonly dataDir: string;
@@ -25,13 +25,7 @@ export const startServer = async (options: StartServerOptions): Promise<void> =>
   migrate(database);
   activeDatabases.add(database);
 
-  const logger = pino({
-    level: options.environment.MYNAS_LOG_LEVEL ?? "info",
-    redact: {
-      censor: "[Redacted]",
-      paths: ["req.headers.authorization", "authorization", "cookie", "password", "token"],
-    },
-  });
+  const logger = createServiceLogger(options.environment);
 
   let server: ReturnType<typeof Bun.serve> | undefined;
   const app = createApp({
