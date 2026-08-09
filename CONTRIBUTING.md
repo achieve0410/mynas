@@ -54,6 +54,7 @@ Run these when packaging changes:
 bun run qa:packaging
 bun run qa:docker
 bun run qa:kubernetes
+bun run qa:s3
 ```
 
 The live harnesses must leave no containers, volumes, listeners, or temporary
