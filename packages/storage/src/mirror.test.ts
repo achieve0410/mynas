@@ -172,8 +172,9 @@ describe("MirrorVolume", () => {
 
     const failingWrite = failingVolume.put("failed.bin", bytes("shared"));
     await putBlocked;
-    await committedVolume.put("committed.bin", bytes("shared"));
+    const committedWrite = committedVolume.put("committed.bin", bytes("shared"));
     releaseBlockedPut();
+    await committedWrite;
 
     await expect(failingWrite).rejects.toThrow("mirror write failed");
     expect((await committedVolume.scrub()).missing).toBe(0);
