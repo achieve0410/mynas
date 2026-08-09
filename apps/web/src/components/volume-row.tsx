@@ -13,7 +13,14 @@ export const VolumeRow = ({ volume }: { readonly volume: Volume }) => {
   });
   const scrub = useMutation({
     mutationFn: () => api.scrub(volume.id),
-    onSuccess: () => setMessage("Scrub completed."),
+    onSuccess: (report) => {
+      const corrupt = typeof report.corrupt === "number" ? report.corrupt : 0;
+      const missing = typeof report.missing === "number" ? report.missing : 0;
+      const unrecoverable = typeof report.unrecoverable === "number" ? report.unrecoverable : 0;
+      setMessage(
+        `Scrub completed: ${corrupt} corrupt, ${missing} missing, ${unrecoverable} unrecoverable.`,
+      );
+    },
   });
   const repair = useMutation({
     mutationFn: () => api.repair(volume.id),
@@ -51,16 +58,16 @@ export const VolumeRow = ({ volume }: { readonly volume: Volume }) => {
         </button>
         <button
           className="button quiet"
-          disabled={repair.isPending || health.data?.status !== "degraded"}
+          disabled={repair.isPending || health.data?.status !== "healthy"}
           onClick={() => {
             if (window.confirm(`Repair mirror "${volume.id}" from its healthy replicas?`)) {
               repair.mutate();
             }
           }}
           title={
-            health.data?.status === "degraded"
-              ? "Restore unavailable replicas from a healthy member"
-              : "Repair becomes available when a mirror is degraded"
+            health.data?.status === "healthy"
+              ? "Restore corrupt or missing replicas from a healthy member"
+              : "Repair requires both mirror members to be available"
           }
           type="button"
         >

@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { expect, test } from "@playwright/test";
 import sharp from "sharp";
@@ -9,6 +8,8 @@ import {
   prepareOwnerAndMirror,
   revokeBrowserSession,
   syntheticJpegFilename,
+  verifyHealthyRepairAvailability,
+  verifyOriginalChecksum,
   verifyTokenLifecycle,
 } from "./photo-setup";
 
@@ -125,8 +126,7 @@ test("photo flagship completes the real browser journey", async ({ browser, page
     throw new Error("browser did not provide a downloaded original");
   }
   const original = await readFile(downloadPath);
-  const sha256 = createHash("sha256").update(original).digest("hex");
-  expect(sha256).toBe(syntheticJpegSha256());
+  const sha256 = verifyOriginalChecksum(original, syntheticJpegSha256());
 
   await rename("/tmp/mynas-playwright/disk-b", "/tmp/mynas-playwright/disk-b-offline");
   try {
@@ -163,6 +163,9 @@ test("photo flagship completes the real browser journey", async ({ browser, page
       await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
       if (routeName === "overview" || routeName === "storage") {
         await expect(page.getByText("disk-a").first()).toBeVisible();
+      }
+      if (routeName === "storage" && viewportName === "desktop") {
+        await verifyHealthyRepairAvailability(page);
       }
       if (routeName === "albums") {
         await expect(page.getByTestId("album-photo-count")).toHaveText("1");

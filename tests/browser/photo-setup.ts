@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { mkdir } from "node:fs/promises";
 import { type APIRequestContext, expect, type Page } from "@playwright/test";
 import { z } from "zod";
@@ -73,6 +74,22 @@ export const verifyTokenLifecycle = async (page: Page): Promise<void> => {
   await page.getByRole("button", { name: "Revoke Browser QA" }).click();
   expect((await revoked).status()).toBe(204);
   await expect(page.getByText("No active API tokens.")).toBeVisible();
+};
+
+export const verifyHealthyRepairAvailability = async (page: Page): Promise<void> => {
+  await expect(page.getByRole("button", { name: "Repair" })).toBeEnabled();
+  const scrubbed = page.waitForResponse(
+    (response) => new URL(response.url()).pathname === "/api/v1/volumes/photos/scrub",
+  );
+  await page.getByRole("button", { name: "Scrub" }).click();
+  expect((await scrubbed).status()).toBe(200);
+  await expect(page.getByText(/Scrub completed: 0 corrupt, 0 missing/).first()).toBeVisible();
+};
+
+export const verifyOriginalChecksum = (contents: Uint8Array, expected: string): string => {
+  const actual = createHash("sha256").update(contents).digest("hex");
+  expect(actual).toBe(expected);
+  return actual;
 };
 
 export const revokeBrowserSession = async (
