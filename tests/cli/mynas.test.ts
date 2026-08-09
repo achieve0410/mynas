@@ -14,6 +14,7 @@ const createDependencies = (
   },
   fetch: fetchImplementation,
   readFile: async () => new TextEncoder().encode("source-bytes"),
+  readStdin: async () => "synthetic owner passphrase\n",
   stderr: (line) => output.push(`stderr:${line}`),
   stdout: (line) => output.push(line),
   writeFile: async (path, contents) => {
@@ -22,6 +23,27 @@ const createDependencies = (
 });
 
 describe("mynas CLI", () => {
+  test("reads authentication passwords from stdin instead of arguments", async () => {
+    const output: string[] = [];
+    const requests: Request[] = [];
+    const mockedFetch: FetchLike = async (input, init) => {
+      const request = new Request(input, init);
+      requests.push(request);
+      return Response.json({ id: crypto.randomUUID(), username: "owner" }, { status: 201 });
+    };
+
+    const exitCode = await runCli(
+      ["setup", "--username", "owner", "--password-stdin"],
+      createDependencies(mockedFetch, output, new Map()),
+    );
+
+    expect(exitCode).toBe(0);
+    expect(await requests[0]?.json()).toEqual({
+      password: "synthetic owner passphrase",
+      username: "owner",
+    });
+  });
+
   test("adds a local backend with bearer auth and stable JSON output", async () => {
     const output: string[] = [];
     const writes = new Map<string, Uint8Array>();

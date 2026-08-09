@@ -90,6 +90,18 @@ export const registerProtectedAuthRoutes = (app: AppInstance, services: AppServi
     context.json({ setupComplete: true, version: "0.1.0" }),
   );
 
+  app.post("/api/v1/logout", (context) => {
+    const token = bearerToken(context.req.header("authorization"));
+    if (token === null) {
+      return context.json(
+        { error: { code: "unauthorized", message: "authentication required" } },
+        401,
+      );
+    }
+    services.auth.logout(token);
+    return context.body(null, 204);
+  });
+
   app.post("/api/v1/tokens", async (context) => {
     const body = tokenSchema.parse(await context.req.json());
     return context.json(services.auth.createApiToken(context.get("user").id, body.name), 201);

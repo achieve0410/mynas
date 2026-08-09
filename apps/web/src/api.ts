@@ -114,6 +114,7 @@ export const api = {
       body: JSON.stringify({ password, username }),
       method: "POST",
     }),
+  logout: () => request("/api/v1/logout", { method: "POST" }),
   repair: (volumeId: string) =>
     json(`/api/v1/volumes/${encodeURIComponent(volumeId)}/repair`, operationSchema, {
       method: "POST",

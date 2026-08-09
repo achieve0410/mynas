@@ -14,6 +14,7 @@ export type CliDependencies = {
   readonly environment: Readonly<Record<string, string | undefined>>;
   readonly fetch: FetchLike;
   readonly readFile: (path: string) => Promise<Uint8Array>;
+  readonly readStdin: () => Promise<string>;
   readonly serve?: (options: ServeOptions) => Promise<void>;
   readonly stderr: (line: string) => void;
   readonly stdout: (line: string) => void;

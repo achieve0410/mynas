@@ -58,21 +58,46 @@ const writeJson = (dependencies: CliDependencies, value: unknown): void => {
   dependencies.stdout(JSON.stringify(value));
 };
 
+const readPassword = async (dependencies: CliDependencies): Promise<string> => {
+  const input = await dependencies.readStdin();
+  const password = input.endsWith("\r\n")
+    ? input.slice(0, -2)
+    : input.endsWith("\n")
+      ? input.slice(0, -1)
+      : input;
+  if (password.length === 0 || password.includes("\r") || password.includes("\n")) {
+    throw new Error("password stdin must contain exactly one non-empty line");
+  }
+  return password;
+};
+
 const addAuthCommands = (program: Command, dependencies: CliDependencies): void => {
   program
     .command("setup")
     .requiredOption("--username <username>")
-    .requiredOption("--password <password>")
-    .action(async (options: { password: string; username: string }) => {
-      writeJson(dependencies, await jsonRequest(dependencies, "/api/v1/setup", options));
+    .requiredOption("--password-stdin", "read password from standard input")
+    .action(async (options: { username: string }) => {
+      writeJson(
+        dependencies,
+        await jsonRequest(dependencies, "/api/v1/setup", {
+          password: await readPassword(dependencies),
+          username: options.username,
+        }),
+      );
     });
 
   program
     .command("login")
     .requiredOption("--username <username>")
-    .requiredOption("--password <password>")
-    .action(async (options: { password: string; username: string }) => {
-      writeJson(dependencies, await jsonRequest(dependencies, "/api/v1/login", options));
+    .requiredOption("--password-stdin", "read password from standard input")
+    .action(async (options: { username: string }) => {
+      writeJson(
+        dependencies,
+        await jsonRequest(dependencies, "/api/v1/login", {
+          password: await readPassword(dependencies),
+          username: options.username,
+        }),
+      );
     });
 
   program
