@@ -4,7 +4,7 @@ import { describe, expect, test } from "bun:test";
 import { migrate } from "./migrations";
 
 describe("migrate", () => {
-  test("creates the auth schema and remains idempotent", () => {
+  test("creates the complete schema and remains idempotent", () => {
     const database = new Database(":memory:");
     try {
       migrate(database);
@@ -20,6 +20,10 @@ describe("migrate", () => {
       expect(tables).toContain("api_tokens");
       expect(tables).toContain("file_versions");
       expect(tables).toContain("files");
+      expect(tables).toContain("photo_albums");
+      expect(tables).toContain("photo_album_items");
+      expect(tables).toContain("photo_jobs");
+      expect(tables).toContain("photos");
       expect(tables).toContain("schema_migrations");
       expect(tables).toContain("sessions");
       expect(tables).toContain("storage_backends");

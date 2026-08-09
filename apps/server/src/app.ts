@@ -10,6 +10,7 @@ import {
   registerPublicAuthRoutes,
 } from "./auth-routes";
 import { errorResponse } from "./errors";
+import { registerPhotoRoutes } from "./photo-routes";
 import { registerStorageRoutes } from "./storage-routes";
 import type { AppEnvironment, AppServices } from "./types";
 
@@ -34,6 +35,7 @@ export const createApp = (options: CreateAppOptions): Hono<AppEnvironment> => {
   registerAuthMiddleware(app, services);
   registerProtectedAuthRoutes(app, services);
   registerStorageRoutes(app, services);
+  registerPhotoRoutes(app, services);
 
   return app;
 };
