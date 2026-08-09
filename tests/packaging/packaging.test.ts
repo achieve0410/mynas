@@ -102,6 +102,7 @@ describe("distribution packaging", () => {
     expect(source).toContain("process.pid");
     expect(source).toContain('MYNAS_PORT: "0"');
     expect(source).toContain("chmod(root, 0o777)");
+    expect(source).toContain("makeWritable");
   });
 
   test("S3 live QA records mixed-mirror cleanup", async () => {

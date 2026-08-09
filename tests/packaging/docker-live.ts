@@ -41,11 +41,13 @@ const compose = (arguments_: readonly string[]) =>
 let primaryError: unknown;
 let evidence: Readonly<Record<string, unknown>> | null = null;
 let hostPort: number | null = null;
+let serviceStarted = false;
 try {
   requireSuccess(
     await compose(["up", "--build", "--detach", "--wait", "--wait-timeout", "180", "mynas"]),
     "docker compose up",
   );
+  serviceStarted = true;
   const published = requireSuccess(await compose(["port", "mynas", "7331"]), "published port");
   hostPort = Number(published.slice(published.lastIndexOf(":") + 1));
   if (!Number.isInteger(hostPort) || hostPort <= 0) {
@@ -179,6 +181,30 @@ if (primaryError !== undefined) {
     `,
   ]);
   console.error(`Docker QA diagnostics: ${diagnostics.stdout}${diagnostics.stderr}`);
+}
+if (serviceStarted) {
+  const writable = await compose([
+    "exec",
+    "--no-TTY",
+    "mynas",
+    "bun",
+    "-e",
+    `
+      import { chmod, readdir } from "node:fs/promises";
+      const makeWritable = async (path) => {
+        for (const entry of await readdir(path, { withFileTypes: true })) {
+          const child = path + "/" + entry.name;
+          if (entry.isDirectory()) await makeWritable(child);
+          await chmod(child, 0o777);
+        }
+      };
+      await makeWritable("/storage/disk-a");
+      await makeWritable("/storage/disk-b");
+    `,
+  ]);
+  if (writable.exitCode !== 0) {
+    cleanupErrors.push(new Error(`Docker QA storage cleanup failed: ${writable.stderr.trim()}`));
+  }
 }
 const down = await compose(["down", "--volumes", "--remove-orphans"]);
 if (down.exitCode !== 0) {
