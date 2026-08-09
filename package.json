@@ -25,6 +25,7 @@
     "qa:docker": "bun tests/packaging/docker-live.ts",
     "qa:kubernetes": "bun tests/packaging/kubernetes-validate.ts",
     "qa:packaging": "bun test tests/packaging/packaging.test.ts",
+    "qa:release": "bun tests/packaging/release-audit.ts",
     "test": "bun test",
     "test:browser": "bun run build:web && playwright test",
     "typecheck": "tsc --noEmit",
