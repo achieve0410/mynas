@@ -208,7 +208,7 @@ docker compose --project-name mynas-minio-qa --profile qa down --volumes
 - a `mynas` namespace;
 - a 5 GiB `ReadWriteOnce` PVC for SQLite metadata;
 - one non-root `Recreate` deployment; and
-- a private `ClusterIP` service on port 7331.
+- a private `ClusterIP` service on port 7331 with namespace-scoped ingress.
 
 ```sh
 kubectl apply -f k8s/mynas.yaml

@@ -94,6 +94,7 @@ describe("distribution packaging", () => {
       .parse(Bun.YAML.parse(source));
     const kinds = manifests.map(({ kind }) => kind);
     expect(kinds).toContain("Deployment");
+    expect(kinds).toContain("NetworkPolicy");
     expect(kinds).toContain("PersistentVolumeClaim");
     expect(kinds).toContain("Service");
 
@@ -105,8 +106,10 @@ describe("distribution packaging", () => {
           strategy: z.object({ type: z.literal("Recreate") }),
           template: z.object({
             spec: z.object({
+              automountServiceAccountToken: z.literal(false),
               containers: z.array(
                 z.object({
+                  args: z.array(z.string()),
                   readinessProbe: z.object({
                     httpGet: z.object({ path: z.literal("/api/v1/health") }),
                   }),
@@ -123,6 +126,7 @@ describe("distribution packaging", () => {
       })
       .parse(manifests.find(({ kind }) => kind === "Deployment"));
     expect(deployment.spec.template.spec.containers).toHaveLength(1);
+    expect(deployment.spec.template.spec.containers[0]?.args).toContain("/data/state");
     expect(
       deployment.spec.template.spec.containers[0]?.volumeMounts.map(({ mountPath }) => mountPath),
     ).toContain("/data");

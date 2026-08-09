@@ -34,6 +34,7 @@ spec:
       labels:
         app.kubernetes.io/name: mynas
     spec:
+      automountServiceAccountToken: false
       securityContext:
         fsGroup: 1000
         fsGroupChangePolicy: OnRootMismatch
@@ -45,7 +46,7 @@ spec:
           imagePullPolicy: IfNotPresent
           args:
             - --data-dir
-            - /data
+            - /data/state
             - --host
             - 0.0.0.0
             - --port
@@ -113,3 +114,21 @@ spec:
     - name: http
       port: 7331
       targetPort: http
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: mynas
+  namespace: mynas
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: mynas
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector: {}
+      ports:
+        - protocol: TCP
+          port: 7331
