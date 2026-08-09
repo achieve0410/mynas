@@ -110,13 +110,22 @@ describe("distribution packaging", () => {
   });
 
   test("release publication is manually recoverable with its required Go toolchain", async () => {
-    const source = await readFile(
+    const release = await readFile(
       resolve(repositoryRoot, ".github/workflows/release-container.yml"),
       "utf8",
     );
-    expect(source).toContain("workflow_dispatch:");
-    expect(source).toContain("go-version: 1.25.4");
-    expect(source).toContain("inputs.version || github.ref_name");
+    const ci = await readFile(resolve(repositoryRoot, ".github/workflows/ci.yml"), "utf8");
+    expect(release).toContain("workflow_dispatch:");
+    expect(release).toContain("go-version: 1.25.4");
+    expect(release).toContain("inputs.version || github.ref_name");
+    expect(ci).toContain("go-version: 1.25.4");
+    for (const workflow of [ci, release]) {
+      expect(workflow).not.toContain("go install github.com/trufflesecurity/trufflehog");
+      expect(workflow).toContain("trufflehog_3.96.0_linux_amd64.tar.gz");
+      expect(workflow).toContain(
+        "7105f1cd6577f058a9e39d0578f1a99c8a1e481e4d3512cd8a09acfe22a0fdc0",
+      );
+    }
   });
 
   test("Kubernetes renders one persistent non-root replica", async () => {
