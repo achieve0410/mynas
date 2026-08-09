@@ -31,6 +31,8 @@ jobs:
       - run: bun run verify
       - run: bun run test:browser
       - run: bun run qa:kubernetes
+      - run: bun run qa:s3
+      - run: bun run qa:docker
       - run: bun run qa:release
 
   publish:
