@@ -78,10 +78,17 @@ export const apiTokenSchema = z.object({
   name: z.string(),
   token: z.string().min(32),
 });
+export const apiTokenRecordSchema = z.object({
+  createdAt: z.string(),
+  id: z.string().uuid(),
+  name: z.string(),
+});
+export const apiTokensSchema = z.array(apiTokenRecordSchema);
 
 export const operationSchema = z.record(z.string(), z.unknown());
 
 export type Album = z.infer<typeof albumSchema>;
+export type ApiToken = z.infer<typeof apiTokenRecordSchema>;
 export type Backend = z.infer<typeof backendSchema>;
 export type Photo = z.infer<typeof photoSchema>;
 export type Volume = z.infer<typeof volumeSchema>;

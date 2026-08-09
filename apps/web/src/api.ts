@@ -4,6 +4,7 @@ import {
   albumSchema,
   albumsSchema,
   apiTokenSchema,
+  apiTokensSchema,
   backendsSchema,
   healthSchema,
   ingestSchema,
@@ -108,6 +109,7 @@ export const api = {
   listAlbums: () => json("/api/v1/albums", albumsSchema),
   listBackends: () => json("/api/v1/backends", backendsSchema),
   listPhotos: () => json("/api/v1/photos", photosSchema),
+  listTokens: () => json("/api/v1/tokens", apiTokensSchema),
   listVolumes: () => json("/api/v1/volumes", volumesSchema),
   login: (username: string, password: string) =>
     json("/api/v1/login", sessionSchema, {
@@ -123,6 +125,8 @@ export const api = {
     json(`/api/v1/volumes/${encodeURIComponent(volumeId)}/scrub`, operationSchema, {
       method: "POST",
     }),
+  revokeToken: (id: string) =>
+    request(`/api/v1/tokens/${encodeURIComponent(id)}`, { method: "DELETE" }),
   setup: (username: string, password: string) =>
     json("/api/v1/setup", operationSchema, {
       body: JSON.stringify({ password, username }),

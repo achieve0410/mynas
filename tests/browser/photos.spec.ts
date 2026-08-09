@@ -2,24 +2,17 @@ import { createHash } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { expect, test } from "@playwright/test";
 import sharp from "sharp";
-import { z } from "zod";
 
 import { syntheticJpeg, syntheticJpegSha256 } from "../fixtures/synthetic-photo";
-import { prepareOwnerAndMirror, syntheticJpegFilename } from "./photo-setup";
+import {
+  ingestSchema,
+  prepareOwnerAndMirror,
+  revokeBrowserSession,
+  syntheticJpegFilename,
+  verifyTokenLifecycle,
+} from "./photo-setup";
 
 const ARTIFACT_DIR = ".artifacts/qa/photos";
-
-const ingestSchema = z.object({
-  job: z.object({
-    id: z.string().uuid(),
-    photoId: z.string().uuid(),
-    status: z.literal("completed"),
-  }),
-  photo: z.object({
-    checksum: z.string().length(64),
-    id: z.string().uuid(),
-  }),
-});
 
 test("photo flagship completes the real browser journey", async ({ browser, page, request }) => {
   const token = await prepareOwnerAndMirror(request);
@@ -222,12 +215,15 @@ test("photo flagship completes the real browser journey", async ({ browser, page
     await anonymousPage.screenshot({ fullPage: true, path: `${ARTIFACT_DIR}/${screenshot}` });
   }
   await anonymousPage.close();
+  await verifyTokenLifecycle(page);
+  await revokeBrowserSession(page, request, token);
 
   await writeFile(
     `${ARTIFACT_DIR}/action-log.json`,
     `${JSON.stringify(
       {
         albumPhotoCount: 1,
+        browserLogout: "revoked",
         completedAt: new Date().toISOString(),
         degradedWriteGate: "upload-disabled",
         fixture: syntheticJpegFilename,
@@ -235,6 +231,7 @@ test("photo flagship completes the real browser journey", async ({ browser, page
         keyboardLightbox: "open-enter-close-escape",
         mobileViewport: { height: 844, horizontalOverflow: false, width: 390 },
         originalSha256: sha256,
+        tokenLifecycle: "created-listed-revoked",
         screenshots: [
           "timeline-desktop.png",
           "timeline-mobile.png",

@@ -108,9 +108,12 @@ Create a longer-lived revocable API token with the Settings page or:
 
 ```sh
 bun run mynas token-create --name automation
+bun run mynas token-list
+bun run mynas token-revoke TOKEN_ID
 ```
 
-The raw API token is shown only when it is created.
+The raw API token is shown only when it is created. Its ID, name, and creation
+time remain available in Settings and `token-list` so the owner can revoke it.
 
 ## Storage backends
 

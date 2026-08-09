@@ -94,4 +94,27 @@ describe("mynas CLI", () => {
     expect(new TextDecoder().decode(writes.get("download.bin"))).toBe("downloaded-bytes");
     expect(output).toEqual(['{"path":"docs/file.bin"}', '{"path":"download.bin","size":16}']);
   });
+
+  test("lists and revokes API tokens", async () => {
+    const output: string[] = [];
+    const requests: Request[] = [];
+    const tokenId = crypto.randomUUID();
+    const mockedFetch: FetchLike = async (input, init) => {
+      const request = new Request(input, init);
+      requests.push(request);
+      return request.method === "DELETE"
+        ? new Response(null, { status: 204 })
+        : Response.json([{ createdAt: "2026-01-01T00:00:00.000Z", id: tokenId, name: "qa" }]);
+    };
+    const dependencies = createDependencies(mockedFetch, output, new Map());
+
+    expect(await runCli(["token-list"], dependencies)).toBe(0);
+    expect(await runCli(["token-revoke", tokenId], dependencies)).toBe(0);
+
+    expect(requests.map((request) => request.method)).toEqual(["GET", "DELETE"]);
+    expect(output).toEqual([
+      `[{"createdAt":"2026-01-01T00:00:00.000Z","id":"${tokenId}","name":"qa"}]`,
+      `{"id":"${tokenId}","revoked":true}`,
+    ]);
+  });
 });
