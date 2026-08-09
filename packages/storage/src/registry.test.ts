@@ -61,4 +61,22 @@ describe("StorageRegistry persistence", () => {
       code: "conflict",
     });
   });
+
+  test("maps concurrent duplicate mirror creation to a conflict", async () => {
+    const otherRoot = join(temporaryDirectory, "other");
+    await mkdir(otherRoot);
+    const registry = new StorageRegistry(database, {});
+    await registry.addBackend({ id: "first", kind: "local", root });
+    await registry.addBackend({ id: "second", kind: "local", root: otherRoot });
+    const registrations = await Promise.allSettled([
+      registry.addMirror("race", ["first", "second"]),
+      registry.addMirror("race", ["first", "second"]),
+    ]);
+
+    expect(registrations.filter(({ status }) => status === "fulfilled")).toHaveLength(1);
+    const rejected = registrations.find(({ status }) => status === "rejected");
+    expect(rejected?.status === "rejected" ? rejected.reason : null).toMatchObject({
+      code: "conflict",
+    });
+  });
 });

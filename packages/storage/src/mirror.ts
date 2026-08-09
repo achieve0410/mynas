@@ -117,28 +117,36 @@ export class MirrorVolume {
     let repaired = 0;
     let unrecoverable = 0;
     for (const blob of this.catalog.listBlobs()) {
-      const inspections = await Promise.all(
-        this.members.map((member) => this.inspectReplica(member, blob)),
+      const result = await serializeReplicaWrite(
+        this.members.map((member) => `${member.replicaIdentity}\0${blob.key}`),
+        async () => {
+          const inspections = await Promise.all(
+            this.members.map((member) => this.inspectReplica(member, blob)),
+          );
+          const source = inspections.find(
+            (inspection): inspection is Extract<ReplicaInspection, { status: "healthy" }> =>
+              inspection.status === "healthy",
+          );
+          if (source === undefined) {
+            return { repaired: 0, unrecoverable: 1 };
+          }
+          let repairedReplicas = 0;
+          for (const [index, inspection] of inspections.entries()) {
+            const member = this.members[index];
+            if (
+              inspection.status !== "healthy" &&
+              member !== undefined &&
+              (await member.probe()).status === "healthy"
+            ) {
+              await member.put(blob.key, source.contents);
+              repairedReplicas += 1;
+            }
+          }
+          return { repaired: repairedReplicas, unrecoverable: 0 };
+        },
       );
-      const source = inspections.find(
-        (inspection): inspection is Extract<ReplicaInspection, { status: "healthy" }> =>
-          inspection.status === "healthy",
-      );
-      if (source === undefined) {
-        unrecoverable += 1;
-        continue;
-      }
-      for (const [index, inspection] of inspections.entries()) {
-        if (inspection.status === "healthy") {
-          continue;
-        }
-        const member = this.members[index];
-        if (member === undefined || (await member.probe()).status !== "healthy") {
-          continue;
-        }
-        await member.put(blob.key, source.contents);
-        repaired += 1;
-      }
+      repaired += result.repaired;
+      unrecoverable += result.unrecoverable;
     }
     return { repaired, unrecoverable };
   }

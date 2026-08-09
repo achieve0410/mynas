@@ -74,6 +74,9 @@ const validateEndpoint = (endpoint: string): void => {
   if (url === null || (url.protocol !== "http:" && url.protocol !== "https:")) {
     throw new S3StorageError("invalid_config", "S3 endpoint must be an HTTP or HTTPS URL");
   }
+  if (url.username.length > 0 || url.password.length > 0) {
+    throw new S3StorageError("invalid_config", "S3 endpoint must not contain credentials");
+  }
   const loopback = ["127.0.0.1", "[::1]", "::1", "localhost"].includes(url.hostname);
   if (url.protocol === "http:" && !loopback) {
     throw new S3StorageError(

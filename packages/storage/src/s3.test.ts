@@ -159,4 +159,21 @@ describe("S3StorageBackend", () => {
         ),
     ).toThrow("HTTPS");
   });
+
+  test("rejects credentials embedded in endpoints", () => {
+    expect(
+      () =>
+        new S3StorageBackend(
+          {
+            accessKeyIdEnv: "MYNAS_S3_TEST_ACCESS_KEY",
+            bucket: "hostile",
+            endpoint: "https://synthetic-user:synthetic-secret@[::1]",
+            id: "hostile",
+            region: "us-east-1",
+            secretAccessKeyEnv: "MYNAS_S3_TEST_SECRET_KEY",
+          },
+          environment,
+        ),
+    ).toThrow("must not contain credentials");
+  });
 });

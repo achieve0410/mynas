@@ -2,35 +2,22 @@ import type { Database } from "bun:sqlite";
 import { z } from "zod";
 
 import type { BackendHealth, StorageBackend } from "./adapter";
+import {
+  type BackendConfig,
+  backendConfigSchema,
+  createStorageBackend,
+  type LocalBackendConfig,
+  RegistryError,
+  registryBackendError,
+  type S3BackendRegistryConfig,
+} from "./backend-factory";
 import { FileCatalog } from "./catalog";
-import { LocalDirectoryBackend, LocalStorageError } from "./local";
 import { MirrorVolume } from "./mirror";
-import { type S3BackendConfig, S3StorageBackend, S3StorageError } from "./s3";
 
-const localConfigSchema = z.object({
-  filesystemIdentity: z.string().min(1).optional(),
-  id: z.string().min(1),
-  kind: z.literal("local"),
-  root: z.string().min(1),
-});
+export type { BackendConfig, LocalBackendConfig, S3BackendRegistryConfig };
+export { RegistryError };
 
-const s3ConfigSchema = z.object({
-  accessKeyIdEnv: z.string().min(1),
-  bucket: z.string().min(1),
-  endpoint: z.url(),
-  id: z.string().min(1),
-  kind: z.literal("s3"),
-  prefix: z.string().min(1).optional(),
-  region: z.string().min(1),
-  secretAccessKeyEnv: z.string().min(1),
-});
-
-const backendConfigSchema = z.discriminatedUnion("kind", [localConfigSchema, s3ConfigSchema]);
 const membersSchema = z.tuple([z.string().min(1), z.string().min(1)]);
-
-export type LocalBackendConfig = z.infer<typeof localConfigSchema>;
-export type S3BackendRegistryConfig = z.infer<typeof s3ConfigSchema>;
-export type BackendConfig = z.infer<typeof backendConfigSchema>;
 
 type BackendRow = {
   readonly config_json: string;
@@ -44,18 +31,6 @@ export type VolumeHealth = {
   readonly status: "degraded" | "healthy";
   readonly unavailable: readonly string[];
 };
-
-export type RegistryErrorCode = "conflict" | "invalid_config" | "not_found" | "unavailable";
-
-export class RegistryError extends Error {
-  public constructor(
-    public readonly code: RegistryErrorCode,
-    message: string,
-  ) {
-    super(message);
-    this.name = "RegistryError";
-  }
-}
 
 export class StorageRegistry {
   private readonly backends = new Map<string, StorageBackend>();
@@ -75,17 +50,10 @@ export class StorageRegistry {
     let backend: StorageBackend;
     let health: BackendHealth;
     try {
-      backend = await this.createBackend(parsed);
+      backend = await createStorageBackend(parsed, this.environment);
       health = await backend.probe();
     } catch (error) {
-      if (error instanceof LocalStorageError || error instanceof S3StorageError) {
-        const code = error.code === "backend_unavailable" ? "unavailable" : "invalid_config";
-        throw new RegistryError(code, error.message);
-      }
-      throw new RegistryError(
-        "unavailable",
-        error instanceof Error ? error.message : "backend is unavailable",
-      );
+      throw registryBackendError(error);
     }
     if (health.status !== "healthy") {
       throw new RegistryError("unavailable", health.reason);
@@ -126,11 +94,18 @@ export class StorageRegistry {
     if (health.some((entry) => entry.status !== "healthy")) {
       throw new RegistryError("unavailable", "mirror member is unavailable");
     }
-    this.database
-      .query(
-        "INSERT INTO storage_volumes (id, kind, members_json, created_at) VALUES (?, 'mirror', ?, ?)",
-      )
-      .run(id, JSON.stringify(members), this.now().toISOString());
+    try {
+      this.database
+        .query(
+          "INSERT INTO storage_volumes (id, kind, members_json, created_at) VALUES (?, 'mirror', ?, ?)",
+        )
+        .run(id, JSON.stringify(members), this.now().toISOString());
+    } catch (error) {
+      if (error instanceof Error && error.message.includes("UNIQUE constraint failed")) {
+        throw new RegistryError("conflict", "volume already exists");
+      }
+      throw error;
+    }
     const volume = new MirrorVolume(id, [first, second], new FileCatalog(this.database, id));
     this.volumes.set(id, volume);
     return volume;
@@ -148,7 +123,12 @@ export class StorageRegistry {
       throw new RegistryError("not_found", "backend not found");
     }
     const config = backendConfigSchema.parse(JSON.parse(row.config_json));
-    const backend = await this.createBackend(config);
+    let backend: StorageBackend;
+    try {
+      backend = await createStorageBackend(config, this.environment);
+    } catch (error) {
+      throw registryBackendError(error);
+    }
     this.backends.set(id, backend);
     return backend;
   }
@@ -182,8 +162,7 @@ export class StorageRegistry {
       throw new RegistryError("not_found", "volume not found");
     }
     const memberIds = membersSchema.parse(JSON.parse(row.members_json));
-    const members = await Promise.all(memberIds.map((memberId) => this.getBackend(memberId)));
-    const probes = await Promise.all(members.map((member) => member.probe()));
+    const probes = await Promise.all(memberIds.map((memberId) => this.probeBackend(memberId)));
     const unavailable = memberIds.filter((_, index) => probes[index]?.status !== "healthy");
     return {
       status: unavailable.length === 0 ? "healthy" : "degraded",
@@ -198,7 +177,7 @@ export class StorageRegistry {
       .map(({ config_json }) => backendConfigSchema.parse(JSON.parse(config_json)));
     return Promise.all(
       configs.map(async (config) => {
-        const health = await (await this.getBackend(config.id)).probe();
+        const health = await this.probeBackend(config.id);
         return health.status === "healthy"
           ? {
               availableBytes: health.availableBytes,
@@ -225,32 +204,15 @@ export class StorageRegistry {
       }));
   }
 
-  private async createBackend(config: BackendConfig): Promise<StorageBackend> {
-    if (config.kind === "local") {
-      const backend = new LocalDirectoryBackend(config.id, config.root, config.filesystemIdentity);
-      await backend.initialize();
-      return backend;
+  private async probeBackend(id: string): Promise<BackendHealth> {
+    try {
+      return await (await this.getBackend(id)).probe();
+    } catch (error) {
+      return {
+        reason: registryBackendError(error).message,
+        status: "unavailable",
+      };
     }
-    const s3Config: S3BackendConfig =
-      config.prefix === undefined
-        ? {
-            accessKeyIdEnv: config.accessKeyIdEnv,
-            bucket: config.bucket,
-            endpoint: config.endpoint,
-            id: config.id,
-            region: config.region,
-            secretAccessKeyEnv: config.secretAccessKeyEnv,
-          }
-        : {
-            accessKeyIdEnv: config.accessKeyIdEnv,
-            bucket: config.bucket,
-            endpoint: config.endpoint,
-            id: config.id,
-            prefix: config.prefix,
-            region: config.region,
-            secretAccessKeyEnv: config.secretAccessKeyEnv,
-          };
-    return new S3StorageBackend(s3Config, this.environment);
   }
 
   private hasBackend(id: string): boolean {

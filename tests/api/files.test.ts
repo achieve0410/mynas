@@ -255,4 +255,39 @@ describe("backend, mirror volume, and file API", () => {
     });
     expect(mirror.status).toBe(400);
   });
+
+  test("maps concurrent duplicate mirror creation to conflict", async () => {
+    const request = () =>
+      app.request("/api/v1/volumes", {
+        body: JSON.stringify({
+          id: "race-volume",
+          kind: "mirror",
+          members: ["disk-a", "disk-b"],
+        }),
+        headers: {
+          authorization: `Bearer ${token}`,
+          "content-type": "application/json",
+        },
+        method: "POST",
+      });
+    const statuses = (await Promise.all([request(), request()])).map(({ status }) => status).sort();
+    expect(statuses).toEqual([201, 409]);
+  });
+
+  test("reports a missing persisted backend as unavailable after restart", async () => {
+    await rename(diskB, join(dataDir, "disk-b-removed"));
+    const restarted = createApp({ dataDir, database, environment: {} });
+    const backends = await restarted.request("/api/v1/backends", {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(backends.status).toBe(200);
+    expect(await backends.json()).toContainEqual(
+      expect.objectContaining({ id: "disk-b", status: "unavailable" }),
+    );
+    const volume = await restarted.request("/api/v1/volumes/photos/status", {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(volume.status).toBe(200);
+    expect(await volume.json()).toEqual({ status: "degraded", unavailable: ["disk-b"] });
+  });
 });

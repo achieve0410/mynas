@@ -10,13 +10,21 @@ class MemoryBackend implements StorageBackend {
   public readonly kind = "local";
   public available = true;
   public beforeNextPut: (() => Promise<void>) | null = null;
+  public beforeNextReplicaIdentity: (() => void) | null = null;
   public failWrites = false;
 
   public constructor(
     public readonly id: string,
-    public readonly replicaIdentity = id,
+    private readonly physicalIdentity = id,
     public readonly objects = new Map<string, Uint8Array>(),
   ) {}
+
+  public get replicaIdentity(): string {
+    const beforeIdentity = this.beforeNextReplicaIdentity;
+    this.beforeNextReplicaIdentity = null;
+    beforeIdentity?.();
+    return this.physicalIdentity;
+  }
 
   public async delete(key: string): Promise<void> {
     this.objects.delete(key);
@@ -182,5 +190,56 @@ describe("MirrorVolume", () => {
 
     await expect(failingWrite).rejects.toThrow("mirror write failed");
     expect((await committedVolume.scrub()).missing).toBe(0);
+  });
+
+  test("serializes repair against a failed write rollback", async () => {
+    const target = new MemoryBackend("target", "physical-a");
+    const targetAlias = new MemoryBackend("target-alias", "physical-a", target.objects);
+    const healthy = new MemoryBackend("healthy");
+    const failed = new MemoryBackend("failed");
+    failed.failWrites = true;
+    const committed = new MirrorVolume(
+      "committed",
+      [target, healthy],
+      new FileCatalog(database, "committed"),
+    );
+    const contents = bytes("repair-race");
+    const version = await committed.put("committed.bin", contents);
+    if (version.blob === null) {
+      throw new Error("expected committed blob");
+    }
+    await target.delete(version.blob.key);
+    const failing = new MirrorVolume(
+      "failing",
+      [targetAlias, failed],
+      new FileCatalog(database, "failing"),
+    );
+    let releaseBlockedPut: () => void = () => undefined;
+    let reportBlockedPut: () => void = () => undefined;
+    const blockedPut = new Promise<void>((resolve) => {
+      releaseBlockedPut = resolve;
+    });
+    const putBlocked = new Promise<void>((resolve) => {
+      reportBlockedPut = resolve;
+    });
+    targetAlias.beforeNextPut = async () => {
+      reportBlockedPut();
+      await blockedPut;
+    };
+    const failedWrite = failing.put("failed.bin", contents);
+    await putBlocked;
+
+    let reportRepairQueued: () => void = () => undefined;
+    const repairQueued = new Promise<void>((resolve) => {
+      reportRepairQueued = resolve;
+    });
+    target.beforeNextReplicaIdentity = reportRepairQueued;
+    const repair = committed.repair();
+    await repairQueued;
+    releaseBlockedPut();
+
+    await expect(failedWrite).rejects.toThrow("mirror write failed");
+    expect(await repair).toEqual({ repaired: 1, unrecoverable: 0 });
+    expect((await committed.scrub()).missing).toBe(0);
   });
 });
