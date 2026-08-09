@@ -71,6 +71,19 @@ describe("distribution packaging", () => {
     expect(app.volumes.map(({ target }) => target)).toContainAllValues(["/data", "/storage"]);
   });
 
+  test("source workspace is not advertised as an npm package", async () => {
+    const metadata = z
+      .object({
+        bin: z.unknown().optional(),
+        private: z.literal(true),
+        scripts: z.object({
+          prepublishOnly: z.string().includes("not distributed through npm"),
+        }),
+      })
+      .parse(JSON.parse(await readFile(resolve(repositoryRoot, "package.json"), "utf8")));
+    expect(metadata.bin).toBeUndefined();
+  });
+
   test("Dockerfile defines a non-root health-checked service", async () => {
     const dockerfile = await readFile(resolve(repositoryRoot, "Dockerfile"), "utf8");
     expect(dockerfile).toContain("USER bun");
