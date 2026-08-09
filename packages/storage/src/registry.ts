@@ -8,6 +8,7 @@ import { MirrorVolume } from "./mirror";
 import { type S3BackendConfig, S3StorageBackend } from "./s3";
 
 const localConfigSchema = z.object({
+  filesystemIdentity: z.string().min(1).optional(),
   id: z.string().min(1),
   kind: z.literal("local"),
   root: z.string().min(1),
@@ -76,9 +77,13 @@ export class StorageRegistry {
     if (health.status !== "healthy") {
       throw new RegistryError("unavailable", health.reason);
     }
+    const persisted =
+      parsed.kind === "local"
+        ? { ...parsed, filesystemIdentity: health.filesystemIdentity }
+        : parsed;
     this.database
       .query("INSERT INTO storage_backends (id, kind, config_json, created_at) VALUES (?, ?, ?, ?)")
-      .run(parsed.id, parsed.kind, JSON.stringify(parsed), this.now().toISOString());
+      .run(parsed.id, parsed.kind, JSON.stringify(persisted), this.now().toISOString());
     this.backends.set(parsed.id, backend);
     return health;
   }
@@ -197,7 +202,7 @@ export class StorageRegistry {
 
   private async createBackend(config: BackendConfig): Promise<StorageBackend> {
     if (config.kind === "local") {
-      const backend = new LocalDirectoryBackend(config.id, config.root);
+      const backend = new LocalDirectoryBackend(config.id, config.root, config.filesystemIdentity);
       await backend.initialize();
       return backend;
     }

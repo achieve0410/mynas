@@ -53,6 +53,7 @@ export class LocalDirectoryBackend implements StorageBackend {
   public constructor(
     public readonly id: string,
     private readonly configuredRoot: string,
+    private readonly expectedIdentity?: string,
   ) {}
 
   public async initialize(): Promise<void> {
@@ -66,7 +67,8 @@ export class LocalDirectoryBackend implements StorageBackend {
 
     this.canonicalRoot = await realpath(this.configuredRoot);
     const canonicalInfo = await fileStat(this.canonicalRoot);
-    this.rootIdentity = filesystemIdentity(canonicalInfo.dev, canonicalInfo.ino);
+    this.rootIdentity =
+      this.expectedIdentity ?? filesystemIdentity(canonicalInfo.dev, canonicalInfo.ino);
   }
 
   public async delete(key: string): Promise<void> {
