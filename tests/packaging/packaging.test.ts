@@ -79,6 +79,14 @@ describe("distribution packaging", () => {
     expect(dockerfile).toContain('"--host", "0.0.0.0"');
   });
 
+  test("Docker live QA rebuilds the source image", async () => {
+    const source = await readFile(
+      resolve(repositoryRoot, "tests/packaging/docker-live.ts"),
+      "utf8",
+    );
+    expect(source).toContain('"--build"');
+  });
+
   test("Kubernetes renders one persistent non-root replica", async () => {
     const source = await readFile(resolve(repositoryRoot, "k8s/mynas.yaml"), "utf8");
     const manifests = z

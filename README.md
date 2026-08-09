@@ -257,11 +257,11 @@ bun run qa:docker
 bun run qa:kubernetes
 ```
 
-`qa:docker` creates isolated synthetic data, waits on the container health
-state, performs a literal mirrored file roundtrip, and removes its containers,
-volumes, ports, and temporary bind path. `qa:kubernetes` uses a server-side
-dry-run when a local cluster is available; otherwise it records strict pinned
-schema validation.
+`qa:docker` rebuilds the image from the current checkout, creates isolated
+synthetic data, waits on the container health state, performs a literal
+mirrored file roundtrip, and removes its containers, volumes, ports, and
+temporary bind path. `qa:kubernetes` uses a server-side dry-run when a local
+cluster is available; otherwise it records strict pinned schema validation.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) before opening a change.
 

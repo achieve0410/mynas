@@ -43,7 +43,7 @@ let primaryError: unknown;
 let evidence: Readonly<Record<string, unknown>> | null = null;
 try {
   requireSuccess(
-    await compose(["up", "--detach", "--wait", "--wait-timeout", "180", "mynas"]),
+    await compose(["up", "--build", "--detach", "--wait", "--wait-timeout", "180", "mynas"]),
     "docker compose up",
   );
   const health = await requestJson("/api/v1/health", 200, healthSchema);

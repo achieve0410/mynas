@@ -42,6 +42,39 @@ describe("mynas CLI", () => {
       password: "synthetic owner passphrase",
       username: "owner",
     });
+
+    const loginDependencies = {
+      ...createDependencies(mockedFetch, output, new Map()),
+      readStdin: async () => "synthetic owner passphrase\r\n",
+    };
+    expect(
+      await runCli(["login", "--username", "owner", "--password-stdin"], loginDependencies),
+    ).toBe(0);
+    expect(await requests[1]?.json()).toEqual({
+      password: "synthetic owner passphrase",
+      username: "owner",
+    });
+  });
+
+  test("rejects empty and multiline password input", async () => {
+    for (const input of ["", "first\nsecond\n"]) {
+      const requests: Request[] = [];
+      const dependencies = {
+        ...createDependencies(
+          async (url, init) => {
+            requests.push(new Request(url, init));
+            return Response.json({});
+          },
+          [],
+          new Map(),
+        ),
+        readStdin: async () => input,
+      };
+      expect(await runCli(["login", "--username", "owner", "--password-stdin"], dependencies)).toBe(
+        1,
+      );
+      expect(requests).toHaveLength(0);
+    }
   });
 
   test("adds a local backend with bearer auth and stable JSON output", async () => {

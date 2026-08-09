@@ -27,7 +27,7 @@
     "qa:packaging": "bun test tests/packaging/packaging.test.ts",
     "qa:release": "bun tests/packaging/release-audit.ts",
     "test": "bun test apps packages tests/api tests/cli tests/packaging",
-    "test:browser": "bun run build:web && playwright test",
+    "test:browser": "bun tests/browser/run.ts",
     "typecheck": "tsc --noEmit",
     "verify": "bun run lint && bun run typecheck && bun run build:web && bun run test"
   },
