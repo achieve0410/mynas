@@ -37,6 +37,7 @@ export const startServer = async (options: StartServerOptions): Promise<void> =>
   server = Bun.serve({
     fetch: app.fetch,
     hostname: options.host,
+    maxRequestBodySize: 64 * 1_024 * 1_024,
     port: options.port,
   });
   logger.info({ host: options.host, port: server.port }, "MyNAS listening");

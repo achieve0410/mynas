@@ -118,6 +118,7 @@ describe("backend, mirror volume, and file API", () => {
     });
     expect(download.status).toBe(200);
     expect(await download.text()).toBe("0123456789");
+    expect(download.headers.get("cache-control")).toBe("no-store");
     expect(download.headers.get("etag")).toBe(`"sha256:${stored.blob.checksum}"`);
 
     const range = await app.request("/api/v1/files/photos/docs/readme.bin", {
@@ -129,6 +130,26 @@ describe("backend, mirror volume, and file API", () => {
     expect(range.status).toBe(206);
     expect(await range.text()).toBe("2345");
     expect(range.headers.get("content-range")).toBe("bytes 2-5/10");
+
+    const invalidRange = await app.request("/api/v1/files/photos/docs/readme.bin", {
+      headers: {
+        authorization: `Bearer ${token}`,
+        range: "bytes=10-11",
+      },
+    });
+    expect(invalidRange.status).toBe(416);
+    expect(invalidRange.headers.get("content-range")).toBe("bytes */10");
+
+    const oversized = await app.request("/api/v1/files/photos/docs/oversized.bin", {
+      body: "small",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-length": String(64 * 1_024 * 1_024 + 1),
+        "content-type": "application/octet-stream",
+      },
+      method: "PUT",
+    });
+    expect(oversized.status).toBe(413);
 
     const versions = await app.request("/api/v1/versions/photos/docs/readme.bin", {
       headers: { authorization: `Bearer ${token}` },

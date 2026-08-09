@@ -44,13 +44,15 @@ const currentBlob = (versions: readonly FileVersion[]) => {
   return current.blob;
 };
 
-const parseRange = (header: string | undefined, size: number): ByteRange | null => {
+const MAX_FILE_UPLOAD_BYTES = 64 * 1_024 * 1_024;
+
+const parseRange = (header: string | undefined, size: number): ByteRange | "invalid" | null => {
   if (header === undefined) {
     return null;
   }
   const match = /^bytes=(\d+)-(\d*)$/.exec(header);
   if (match === null) {
-    throw new RangeError("invalid range");
+    return "invalid";
   }
   const start = Number(match[1]);
   const inclusiveEnd = match[2] === "" ? size - 1 : Number(match[2]);
@@ -61,7 +63,7 @@ const parseRange = (header: string | undefined, size: number): ByteRange | null 
     inclusiveEnd < start ||
     inclusiveEnd >= size
   ) {
-    throw new RangeError("invalid range");
+    return "invalid";
   }
   return { endExclusive: inclusiveEnd + 1, start };
 };
@@ -111,8 +113,21 @@ export const registerStorageRoutes = (app: AppInstance, services: AppServices): 
   });
 
   app.put("/api/v1/files/:volume/:path{.+}", async (context) => {
+    const declaredLength = Number(context.req.header("content-length"));
+    if (Number.isFinite(declaredLength) && declaredLength > MAX_FILE_UPLOAD_BYTES) {
+      return context.json(
+        { error: { code: "payload_too_large", message: "file exceeds 64 MiB limit" } },
+        413,
+      );
+    }
     const volume = await services.registry.getVolume(context.req.param("volume"));
     const contents = new Uint8Array(await context.req.arrayBuffer());
+    if (contents.byteLength > MAX_FILE_UPLOAD_BYTES) {
+      return context.json(
+        { error: { code: "payload_too_large", message: "file exceeds 64 MiB limit" } },
+        413,
+      );
+    }
     const version = await volume.put(context.req.param("path"), contents);
     return context.json(version, 201);
   });
@@ -123,10 +138,23 @@ export const registerStorageRoutes = (app: AppInstance, services: AppServices): 
     const versions = volume.versions(path);
     const blob = currentBlob(versions);
     const range = parseRange(context.req.header("range"), blob.size);
+    if (range === "invalid") {
+      return new Response(
+        JSON.stringify({ error: { code: "invalid_range", message: "range is unsatisfiable" } }),
+        {
+          headers: {
+            "content-range": `bytes */${blob.size}`,
+            "content-type": "application/json",
+          },
+          status: 416,
+        },
+      );
+    }
     const contents = await volume.get(path);
     const body = range === null ? contents : contents.slice(range.start, range.endExclusive);
     const headers = new Headers({
       "accept-ranges": "bytes",
+      "cache-control": "no-store",
       "content-length": String(body.byteLength),
       "content-type": "application/octet-stream",
       etag: `"sha256:${blob.checksum}"`,

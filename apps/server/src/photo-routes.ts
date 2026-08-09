@@ -16,6 +16,7 @@ const filenameSchema = z
   })
   .pipe(z.string().min(1).max(255));
 const albumSchema = z.object({ name: z.string().trim().min(1).max(120) });
+const MAX_PHOTO_UPLOAD_BYTES = 25 * 1_024 * 1_024;
 
 const exactArrayBuffer = (contents: Uint8Array): ArrayBuffer => {
   const buffer = new ArrayBuffer(contents.byteLength);
@@ -28,8 +29,21 @@ const serviceFor = async (services: AppServices): Promise<PhotoService> =>
 
 export const registerPhotoRoutes = (app: AppInstance, services: AppServices): void => {
   app.post("/api/v1/photos", async (context) => {
+    const declaredLength = Number(context.req.header("content-length"));
+    if (Number.isFinite(declaredLength) && declaredLength > MAX_PHOTO_UPLOAD_BYTES) {
+      return context.json(
+        { error: { code: "payload_too_large", message: "photo exceeds 25 MiB limit" } },
+        413,
+      );
+    }
     const filename = filenameSchema.parse(context.req.header("x-mynas-filename"));
     const contents = new Uint8Array(await context.req.arrayBuffer());
+    if (contents.byteLength > MAX_PHOTO_UPLOAD_BYTES) {
+      return context.json(
+        { error: { code: "payload_too_large", message: "photo exceeds 25 MiB limit" } },
+        413,
+      );
+    }
     const result = await (await serviceFor(services)).ingest({ contents, filename });
     return context.json(result, 201);
   });
@@ -45,7 +59,7 @@ export const registerPhotoRoutes = (app: AppInstance, services: AppServices): vo
   app.get("/api/v1/photos/:id/preview", async (context) => {
     const contents = await (await serviceFor(services)).getPreview(context.req.param("id"));
     return new Response(exactArrayBuffer(contents), {
-      headers: { "content-type": "image/webp" },
+      headers: { "cache-control": "no-store", "content-type": "image/webp" },
     });
   });
 
@@ -55,6 +69,7 @@ export const registerPhotoRoutes = (app: AppInstance, services: AppServices): vo
     const contents = await service.getOriginal(photo.id);
     return new Response(exactArrayBuffer(contents), {
       headers: {
+        "cache-control": "no-store",
         "content-disposition": `attachment; filename*=UTF-8''${encodeURIComponent(photo.filename)}`,
         "content-type": "image/jpeg",
       },

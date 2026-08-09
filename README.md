@@ -270,6 +270,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) before opening a change.
 - Mirrors have exactly two members; there is no parity or multi-member RAID.
 - The Files page addresses known object paths; it is not a directory browser.
 - Photo ingestion is JPEG-only.
+- File uploads are limited to 64 MiB and photo uploads to 25 MiB in v0.1.0.
 - Repair and scrub operations are synchronous.
 - S3 buckets and local backend directories must already exist.
 - The Kubernetes manifest is single-replica and does not mount a data backend.
