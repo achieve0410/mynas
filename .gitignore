@@ -1,0 +1,15 @@
+.DS_Store
+.env
+.env.*
+!.env.example
+.omo/
+.artifacts/
+node_modules/
+dist/
+coverage/
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+
