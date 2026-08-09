@@ -7,6 +7,7 @@ import type { Volume } from "../schemas";
 
 export const VolumeRow = ({ volume }: { readonly volume: Volume }) => {
   const [message, setMessage] = useState<string | null>(null);
+  const [operationWarning, setOperationWarning] = useState(false);
   const health = useQuery({
     queryFn: () => api.getVolumeHealth(volume.id),
     queryKey: ["volume-health", volume.id],
@@ -17,6 +18,7 @@ export const VolumeRow = ({ volume }: { readonly volume: Volume }) => {
       const corrupt = typeof report.corrupt === "number" ? report.corrupt : 0;
       const missing = typeof report.missing === "number" ? report.missing : 0;
       const unrecoverable = typeof report.unrecoverable === "number" ? report.unrecoverable : 0;
+      setOperationWarning(unrecoverable > 0);
       setMessage(
         `Scrub completed: ${corrupt} corrupt, ${missing} missing, ${unrecoverable} unrecoverable.`,
       );
@@ -24,8 +26,9 @@ export const VolumeRow = ({ volume }: { readonly volume: Volume }) => {
   });
   const repair = useMutation({
     mutationFn: () => api.repair(volume.id),
-    onSuccess: async () => {
-      setMessage("Repair completed.");
+    onSuccess: async ({ repaired, unrecoverable }) => {
+      setOperationWarning(unrecoverable > 0);
+      setMessage(`Repair completed: ${repaired} repaired, ${unrecoverable} unrecoverable.`);
       await health.refetch();
     },
   });
@@ -42,7 +45,9 @@ export const VolumeRow = ({ volume }: { readonly volume: Volume }) => {
         {health.data?.unavailable.length ? (
           <small className="danger-text">Unavailable: {health.data.unavailable.join(", ")}</small>
         ) : null}
-        <small>{message ?? "Last scrub: not run in this session"}</small>
+        <small className={operationWarning ? "danger-text" : undefined}>
+          {message ?? "Last scrub: not run in this session"}
+        </small>
       </div>
       <div className="row-actions">
         <span className={`state-label ${health.data?.status === "degraded" ? "danger-state" : ""}`}>

@@ -84,6 +84,19 @@ export const verifyHealthyRepairAvailability = async (page: Page): Promise<void>
   await page.getByRole("button", { name: "Scrub" }).click();
   expect((await scrubbed).status()).toBe(200);
   await expect(page.getByText(/Scrub completed: 0 corrupt, 0 missing/).first()).toBeVisible();
+  const repaired = page.waitForResponse(
+    (response) => new URL(response.url()).pathname === "/api/v1/volumes/photos/repair",
+  );
+  const confirmation = page.waitForEvent("dialog");
+  const clickRepair = page.getByRole("button", { name: "Repair" }).click();
+  const dialog = await confirmation;
+  expect(dialog.message()).toContain('Repair mirror "photos"');
+  await dialog.accept();
+  await clickRepair;
+  expect((await repaired).status()).toBe(200);
+  await expect(
+    page.getByText("Repair completed: 0 repaired, 0 unrecoverable.").first(),
+  ).toBeVisible();
 };
 
 export const verifyOriginalChecksum = (contents: Uint8Array, expected: string): string => {

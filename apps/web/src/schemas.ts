@@ -32,6 +32,10 @@ export const volumeHealthSchema = z.object({
   status: z.enum(["degraded", "healthy"]),
   unavailable: z.array(z.string()),
 });
+export const repairReportSchema = z.object({
+  repaired: z.number().int().nonnegative(),
+  unrecoverable: z.number().int().nonnegative(),
+});
 
 export const photoSchema = z.object({
   capturedAt: z.string(),

@@ -10,6 +10,7 @@ import {
   ingestSchema,
   operationSchema,
   photosSchema,
+  repairReportSchema,
   sessionSchema,
   setupStatusSchema,
   systemStatusSchema,
@@ -118,7 +119,7 @@ export const api = {
     }),
   logout: () => request("/api/v1/logout", { method: "POST" }),
   repair: (volumeId: string) =>
-    json(`/api/v1/volumes/${encodeURIComponent(volumeId)}/repair`, operationSchema, {
+    json(`/api/v1/volumes/${encodeURIComponent(volumeId)}/repair`, repairReportSchema, {
       method: "POST",
     }),
   scrub: (volumeId: string) =>
