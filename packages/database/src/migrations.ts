@@ -1,6 +1,6 @@
 import type { Database } from "bun:sqlite";
 
-const MIGRATION_VERSION = 1;
+const MIGRATION_VERSION = 2;
 
 export const migrate = (database: Database): void => {
   database.exec(`
@@ -34,6 +34,33 @@ export const migrate = (database: Database): void => {
       created_at TEXT NOT NULL,
       revoked_at TEXT
     );
+
+    CREATE TABLE IF NOT EXISTS files (
+      volume_id TEXT NOT NULL,
+      path TEXT NOT NULL,
+      current_version_id TEXT NOT NULL,
+      PRIMARY KEY (volume_id, path)
+    );
+
+    CREATE TABLE IF NOT EXISTS file_versions (
+      sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+      id TEXT NOT NULL UNIQUE,
+      volume_id TEXT NOT NULL,
+      path TEXT NOT NULL,
+      blob_checksum TEXT,
+      blob_key TEXT,
+      blob_size INTEGER,
+      tombstone INTEGER NOT NULL CHECK (tombstone IN (0, 1)),
+      created_at TEXT NOT NULL,
+      CHECK (
+        (tombstone = 1 AND blob_checksum IS NULL AND blob_key IS NULL AND blob_size IS NULL)
+        OR
+        (tombstone = 0 AND blob_checksum IS NOT NULL AND blob_key IS NOT NULL AND blob_size >= 0)
+      )
+    );
+
+    CREATE INDEX IF NOT EXISTS file_versions_path_idx
+      ON file_versions (volume_id, path, sequence);
   `);
 
   database
