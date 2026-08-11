@@ -119,6 +119,55 @@ bun run mynas token-revoke TOKEN_ID
 The raw API token is shown only when it is created. Its ID, name, and creation
 time remain available in Settings and `token-list` so the owner can revoke it.
 
+### Catalog backup and recovery
+
+Create catalog backups regularly and before changing storage configuration.
+Backup may run while the service is online: SQLite creates a consistent
+snapshot that includes committed WAL data. The output path must not already
+exist.
+
+```sh
+mkdir -p "$HOME/MyNAS/backups"
+bun run mynas catalog backup \
+  --data-dir "$HOME/MyNAS/data" \
+  --output "$HOME/MyNAS/backups/mynas-catalog.sqlite"
+```
+
+The command validates both the source and completed snapshot, then prints JSON
+containing `integrity: "ok"` and the absolute backup path. Catalog backups
+contain owner password hashes, session and API token hashes, backend
+configuration, file/version metadata, and photo metadata. Store them with
+permissions and encryption appropriate for credentials.
+
+A catalog backup does **not** contain mirrored blob bytes. Back up local backend
+roots independently and retain S3 objects according to the provider's
+versioning or backup policy. A restored catalog cannot recreate missing
+objects.
+
+Restore is offline-only. Stop MyNAS, select a data directory with no existing
+`mynas.sqlite`, `mynas.sqlite-wal`, or `mynas.sqlite-shm`, then restore and
+restart the service:
+
+```sh
+bun run mynas catalog restore \
+  --data-dir "$HOME/MyNAS/restored-data" \
+  --input "$HOME/MyNAS/backups/mynas-catalog.sqlite"
+
+bun run mynas serve \
+  --data-dir "$HOME/MyNAS/restored-data" \
+  --host 127.0.0.1 \
+  --port 7331
+```
+
+Restore validates catalog integrity, foreign keys, and schema compatibility
+before atomically installing `mynas.sqlite`. It refuses to replace an existing
+catalog. Keep the original data directory unchanged until the restored service
+and configured storage backends have been verified.
+
+For Compose or Kubernetes, stop the workload before restore and mount the
+existing metadata volume at the same data path in a one-off MyNAS container.
+Do not delete the Compose volume or persistent volume during recovery.
+
 ## Storage backends
 
 ### Local directories
