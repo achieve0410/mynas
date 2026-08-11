@@ -23,6 +23,19 @@ const createDependencies = (
 });
 
 describe("mynas CLI", () => {
+  test("lists catalog backup and restore commands", async () => {
+    const output: string[] = [];
+
+    const exitCode = await runCli(
+      ["catalog", "--help"],
+      createDependencies(async () => Response.json({}), output, new Map()),
+    );
+
+    expect(exitCode).toBe(0);
+    expect(output.join("\n")).toContain("backup");
+    expect(output.join("\n")).toContain("restore");
+  });
+
   test("reads authentication passwords from stdin instead of arguments", async () => {
     const output: string[] = [];
     const requests: Request[] = [];

@@ -1,5 +1,6 @@
 import { Command, CommanderError } from "commander";
 
+import { registerCatalogCommands } from "./catalog";
 import { CliHttpError, registerCommands } from "./commands";
 
 export type ServeOptions = {
@@ -11,6 +12,7 @@ export type ServeOptions = {
 export type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 
 export type CliDependencies = {
+  readonly backupCatalog?: (dataDir: string, output: string) => Promise<unknown>;
   readonly environment: Readonly<Record<string, string | undefined>>;
   readonly fetch: FetchLike;
   readonly readFile: (path: string) => Promise<Uint8Array>;
@@ -18,6 +20,7 @@ export type CliDependencies = {
   readonly serve?: (options: ServeOptions) => Promise<void>;
   readonly stderr: (line: string) => void;
   readonly stdout: (line: string) => void;
+  readonly restoreCatalog?: (dataDir: string, input: string) => Promise<unknown>;
   readonly writeFile: (path: string, contents: Uint8Array) => Promise<void>;
 };
 
@@ -57,6 +60,7 @@ export const runCli = async (
       });
     });
 
+  registerCatalogCommands(program, dependencies);
   registerCommands(program, dependencies);
 
   try {

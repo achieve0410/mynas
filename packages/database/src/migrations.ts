@@ -1,6 +1,6 @@
 import type { Database } from "bun:sqlite";
 
-const MIGRATION_VERSION = 4;
+export const CURRENT_SCHEMA_VERSION = 4;
 
 export const migrate = (database: Database): void => {
   database.exec(`
@@ -116,5 +116,5 @@ export const migrate = (database: Database): void => {
 
   database
     .query("INSERT OR IGNORE INTO schema_migrations (version, applied_at) VALUES (?, ?)")
-    .run(MIGRATION_VERSION, new Date().toISOString());
+    .run(CURRENT_SCHEMA_VERSION, new Date().toISOString());
 };
