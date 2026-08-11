@@ -2,6 +2,7 @@ import type { Context } from "hono";
 import { z } from "zod";
 
 import { AuthError } from "../../../packages/auth/src/auth";
+import { MaintenanceError } from "../../../packages/maintenance/src/maintenance";
 import { PhotoError } from "../../../packages/photos/src/photos";
 import { CatalogError } from "../../../packages/storage/src/catalog";
 import { MirrorError } from "../../../packages/storage/src/mirror";
@@ -47,6 +48,9 @@ const domainErrorStatus = (error: unknown): ErrorStatus => {
   }
   if (error instanceof PhotoError) {
     return error.code === "not_found" ? 404 : 400;
+  }
+  if (error instanceof MaintenanceError) {
+    return error.code === "conflict" ? 409 : 400;
   }
   if (error instanceof z.ZodError || error instanceof SyntaxError) {
     return 400;

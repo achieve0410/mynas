@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 
 const repositoryRoot = resolve(import.meta.dir, "../..");
 const dataDirectory = "/tmp/mynas-playwright";
+const maintenanceDirectory = "/tmp/mynas-playwright-maintenance";
 
 const run = async (
   arguments_: readonly string[],
@@ -62,6 +63,7 @@ try {
   await server.exited;
   await drainServerOutput;
   await rm(dataDirectory, { force: true, recursive: true });
+  await rm(maintenanceDirectory, { force: true, recursive: true });
 }
 
 let listening = true;

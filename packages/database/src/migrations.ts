@@ -1,6 +1,6 @@
 import type { Database } from "bun:sqlite";
 
-export const CURRENT_SCHEMA_VERSION = 4;
+export const CURRENT_SCHEMA_VERSION = 5;
 
 export const migrate = (database: Database): void => {
   database.exec(`
@@ -112,6 +112,45 @@ export const migrate = (database: Database): void => {
       added_at TEXT NOT NULL,
       PRIMARY KEY (album_id, photo_id)
     );
+
+    CREATE TABLE IF NOT EXISTS maintenance_identity (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      owner_id TEXT NOT NULL UNIQUE
+        CHECK (length(owner_id) = 32 AND owner_id NOT GLOB '*[^0-9a-f]*')
+    );
+
+    CREATE TABLE IF NOT EXISTS maintenance_policy (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      enabled INTEGER NOT NULL CHECK (enabled IN (0, 1)),
+      backup_directory TEXT NOT NULL,
+      backup_interval_hours INTEGER NOT NULL CHECK (backup_interval_hours BETWEEN 1 AND 8760),
+      scrub_interval_hours INTEGER NOT NULL CHECK (scrub_interval_hours BETWEEN 1 AND 8760),
+      retention_count INTEGER NOT NULL CHECK (retention_count BETWEEN 1 AND 100),
+      destination_id TEXT NOT NULL
+        CHECK (length(destination_id) = 32 AND destination_id NOT GLOB '*[^0-9a-f]*'),
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS maintenance_runs (
+      sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+      id TEXT NOT NULL UNIQUE,
+      kind TEXT NOT NULL CHECK (kind IN ('catalog_backup', 'volume_scrub')),
+      trigger TEXT NOT NULL CHECK (trigger IN ('manual', 'scheduled')),
+      status TEXT NOT NULL CHECK (status IN ('running', 'completed', 'failed')),
+      started_at TEXT NOT NULL,
+      finished_at TEXT,
+      output_path TEXT,
+      summary_json TEXT,
+      error TEXT,
+      CHECK (
+        (status = 'running' AND finished_at IS NULL)
+        OR
+        (status IN ('completed', 'failed') AND finished_at IS NOT NULL)
+      )
+    );
+
+    CREATE INDEX IF NOT EXISTS maintenance_runs_kind_time_idx
+      ON maintenance_runs (kind, started_at DESC);
   `);
 
   database

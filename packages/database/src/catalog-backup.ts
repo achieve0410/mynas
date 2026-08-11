@@ -151,6 +151,35 @@ export const backupCatalog = async (
   return { integrity: "ok", path: outputPath };
 };
 
+export const backupCatalogDatabase = async (
+  database: Database,
+  output: string,
+  options: { readonly createParent?: boolean } = {},
+): Promise<CatalogOperationResult> => {
+  const outputPath = resolve(output);
+  try {
+    validateCatalog(database, "invalid live catalog");
+    if (options.createParent !== false) {
+      await mkdir(dirname(outputPath), { mode: 0o700, recursive: true });
+    }
+    await snapshotCatalog(
+      database,
+      outputPath,
+      "backup_destination_exists",
+      `backup output already exists at ${outputPath}`,
+      `invalid catalog backup at ${outputPath}`,
+    );
+  } catch (error) {
+    if (error instanceof CatalogOperationError) {
+      throw error;
+    }
+    throw new CatalogOperationError("operation_failed", "catalog backup failed", {
+      cause: error,
+    });
+  }
+  return { integrity: "ok", path: outputPath };
+};
+
 export const restoreCatalog = async (
   dataDir: string,
   input: string,

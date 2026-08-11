@@ -11,6 +11,10 @@ import {
   fileVersionsSchema,
   healthSchema,
   ingestSchema,
+  type MaintenancePolicyInput,
+  maintenanceBatchSchema,
+  maintenancePolicySchema,
+  maintenanceSnapshotSchema,
   operationSchema,
   photosSchema,
   repairReportSchema,
@@ -109,6 +113,7 @@ export const api = {
     (await request(`/api/v1/files/${encodeURIComponent(volumeId)}/${encodePath(key)}`)).blob(),
   getSetupStatus: () => json("/api/v1/setup/status", setupStatusSchema),
   getHealth: () => json("/api/v1/health", healthSchema),
+  getMaintenance: () => json("/api/v1/maintenance", maintenanceSnapshotSchema),
   getSystemStatus: () => json("/api/v1/system/status", systemStatusSchema),
   getVolumeHealth: (volumeId: string) =>
     json(`/api/v1/volumes/${encodeURIComponent(volumeId)}/status`, volumeHealthSchema),
@@ -156,6 +161,12 @@ export const api = {
     json(`/api/v1/versions/${encodeURIComponent(volumeId)}/restore`, fileVersionSchema, {
       body: JSON.stringify({ path: key, versionId }),
       method: "POST",
+    }),
+  runMaintenance: () => json("/api/v1/maintenance/run", maintenanceBatchSchema, { method: "POST" }),
+  saveMaintenancePolicy: (policy: MaintenancePolicyInput) =>
+    json("/api/v1/maintenance/policy", maintenancePolicySchema, {
+      body: JSON.stringify(policy),
+      method: "PUT",
     }),
   setup: (username: string, password: string) =>
     json("/api/v1/setup", operationSchema, {

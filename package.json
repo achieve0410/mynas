@@ -28,7 +28,7 @@
     "qa:packaging": "bun test tests/packaging/packaging.test.ts",
     "qa:release": "bun tests/packaging/release-audit.ts",
     "qa:s3": "bun tests/packaging/s3-live.ts",
-    "test": "bun test apps packages tests/api tests/cli tests/packaging",
+    "test": "bun test apps packages tests/api tests/cli tests/packaging tests/server",
     "test:browser": "bun tests/browser/run.ts",
     "typecheck": "tsc --noEmit",
     "verify": "bun run lint && bun run typecheck && bun run build:web && bun run test"

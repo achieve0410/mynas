@@ -124,11 +124,48 @@ export const apiTokensSchema = z.array(apiTokenRecordSchema);
 
 export const operationSchema = z.record(z.string(), z.unknown());
 
+export const maintenancePolicySchema = z.object({
+  backupDirectory: z.string(),
+  backupIntervalHours: z.number().int().min(1).max(8_760),
+  enabled: z.boolean(),
+  retentionCount: z.number().int().min(1).max(100),
+  scrubIntervalHours: z.number().int().min(1).max(8_760),
+  updatedAt: z.string(),
+});
+export const maintenanceRunSchema = z.object({
+  error: z.string().nullable(),
+  finishedAt: z.string().nullable(),
+  id: z.string().uuid(),
+  kind: z.enum(["catalog_backup", "volume_scrub"]),
+  outputPath: z.string().nullable(),
+  startedAt: z.string(),
+  status: z.enum(["completed", "failed", "running"]),
+  summary: z.record(z.string(), z.unknown()).nullable(),
+  trigger: z.enum(["manual", "scheduled"]),
+});
+export const maintenanceDueSchema = z.object({
+  backupAt: z.string().nullable(),
+  scrubAt: z.string().nullable(),
+});
+export const maintenanceSnapshotSchema = z.object({
+  nextDue: maintenanceDueSchema,
+  policy: maintenancePolicySchema.nullable(),
+  runs: z.array(maintenanceRunSchema),
+});
+export const maintenanceBatchSchema = z.object({
+  runs: z.array(maintenanceRunSchema),
+  trigger: z.enum(["manual", "scheduled"]),
+});
+
 export type Album = z.infer<typeof albumSchema>;
 export type ApiToken = z.infer<typeof apiTokenRecordSchema>;
 export type Backend = z.infer<typeof backendSchema>;
 export type FileListEntry = z.infer<typeof fileListEntrySchema>;
 export type FileListing = z.infer<typeof fileListingSchema>;
 export type FileVersion = z.infer<typeof fileVersionSchema>;
+export type MaintenancePolicy = z.infer<typeof maintenancePolicySchema>;
+export type MaintenancePolicyInput = Omit<MaintenancePolicy, "updatedAt">;
+export type MaintenanceRun = z.infer<typeof maintenanceRunSchema>;
+export type MaintenanceSnapshot = z.infer<typeof maintenanceSnapshotSchema>;
 export type Photo = z.infer<typeof photoSchema>;
 export type Volume = z.infer<typeof volumeSchema>;

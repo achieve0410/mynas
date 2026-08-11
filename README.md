@@ -17,6 +17,8 @@ directories and remain responsible for the underlying filesystems and backups.
 - SHA-256-addressed blobs and versioned file metadata in SQLite
 - Degraded-member detection with write refusal
 - Scrub reports, replica repair, range downloads, and exact-path file versions
+- Scheduled catalog snapshots, mirror scrubs, bounded retention, and a durable
+  maintenance run ledger
 - JPEG ingestion, WebP previews, checksum deduplication, timeline, lightbox,
   and albums
 - One localhost owner, expiring browser sessions, and revocable API tokens
@@ -118,6 +120,47 @@ bun run mynas token-revoke TOKEN_ID
 
 The raw API token is shown only when it is created. Its ID, name, and creation
 time remain available in Settings and `token-list` so the owner can revoke it.
+
+### Automatic maintenance
+
+Open **Settings → Maintenance** to configure one policy for the service:
+
+- choose an absolute backup directory outside the MyNAS data directory;
+- choose catalog-backup and volume-scrub intervals from 1 to 8,760 hours;
+- keep between 1 and 100 managed catalog backups; and
+- enable the scheduler, or leave it disabled and use **Run maintenance now**.
+
+The backup directory must be on storage that remains mounted and writable by
+the MyNAS process. For Docker or Kubernetes, mount a separate persistent
+directory at that path; a path that exists only in the container filesystem
+will disappear when the container is replaced. Saving the policy assigns that
+destination a random identity and creates a hidden, regular-file marker in the
+directory. Markers are not shared between previously configured destinations.
+If the mounted destination disappears, is substituted, or presents a marker
+symlink, backup runs fail visibly instead of recreating the path on a different
+filesystem. MyNAS verifies the marker before and after snapshot publication
+and retention.
+
+Each batch creates separate catalog-backup and volume-scrub records in the
+Settings run ledger. A catalog backup is validated before it is marked
+completed. Retention removes only snapshots owned by this MyNAS data directory
+and always preserves the current successful snapshot; unrelated files and
+snapshots from other instances are left untouched. A scrub checks every
+configured mirror and records per-volume failures, but it does not repair
+replicas automatically.
+
+Scheduled intervals are measured from the policy update or the operation's
+last finished attempt. The service serializes maintenance batches, refuses a
+second manual run while one is active, and waits for an active batch before
+closing its catalog during SIGINT/SIGTERM graceful shutdown. On the next
+startup, an operation interrupted by a crash is marked failed rather than left
+running forever. Inspect failed runs in Settings, resolve the reported storage
+or path issue, and run maintenance again.
+
+Automatic catalog snapshots contain credentials and metadata but not mirrored
+blob bytes. Protect the backup directory and maintain an independent backup of
+local backend roots or S3 objects. Recovery remains an explicit offline
+operation described below.
 
 ### Catalog backup and recovery
 

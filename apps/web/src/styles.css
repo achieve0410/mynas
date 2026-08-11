@@ -909,6 +909,169 @@ input::placeholder {
   background: var(--surface-2);
 }
 
+.maintenance-form {
+  display: grid;
+  gap: 18px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.maintenance-toggle {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  gap: 11px;
+  padding: 13px 14px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  background: var(--surface-2);
+  color: var(--text-primary);
+}
+
+.maintenance-toggle input {
+  width: 17px;
+  height: 17px;
+  min-height: 17px;
+  margin-top: 2px;
+  accent-color: var(--accent);
+}
+
+.maintenance-toggle > div,
+.maintenance-field {
+  display: grid;
+  min-width: 0;
+  gap: 7px;
+}
+
+.maintenance-toggle small {
+  color: var(--text-secondary);
+  font-weight: 400;
+}
+
+.maintenance-field > small,
+.maintenance-form label > small {
+  color: var(--text-tertiary);
+  font-weight: 400;
+}
+
+.maintenance-fields,
+.maintenance-schedule {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.maintenance-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.maintenance-form input:not([type="checkbox"]),
+.maintenance-actions .button {
+  min-height: 44px;
+  scroll-margin-block: 96px;
+}
+
+.maintenance-form input:not([type="checkbox"]),
+.maintenance-actions .button.secondary {
+  border-color: var(--text-tertiary);
+}
+
+.maintenance-schedule {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 0;
+}
+
+.maintenance-schedule > div {
+  min-width: 0;
+  padding: 13px 14px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  background: var(--surface-2);
+}
+
+.maintenance-schedule dt {
+  color: var(--text-secondary);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+}
+
+.maintenance-schedule dd {
+  margin: 5px 0 0;
+  overflow-wrap: anywhere;
+  font-size: 13px;
+}
+
+.maintenance-history {
+  min-width: 0;
+  padding-top: 4px;
+}
+
+.maintenance-history-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 8px;
+}
+
+.maintenance-history-heading svg {
+  color: var(--accent);
+}
+
+.maintenance-history ul {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.maintenance-history li {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: start;
+  padding: 13px 0;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.maintenance-history li > div {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.maintenance-history small {
+  color: var(--text-secondary);
+}
+
+.maintenance-history code {
+  color: var(--text-tertiary);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.state-label.running-state {
+  background: #fbbf2414;
+  color: var(--warning);
+}
+
+@media (max-width: 719px) {
+  .maintenance-fields,
+  .maintenance-schedule {
+    grid-template-columns: 1fr;
+  }
+
+  .maintenance-actions .button {
+    width: 100%;
+    min-height: 44px;
+  }
+}
+
 .token-result code {
   min-width: 0;
   flex: 1;
