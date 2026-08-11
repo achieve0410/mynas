@@ -1,6 +1,12 @@
 import type { Database } from "bun:sqlite";
 import { isAbsolute } from "node:path";
 
+import { CatalogError } from "./catalog-error";
+import { type FileListCursor, type FileListPage, listCurrentFiles } from "./catalog-listing";
+
+export { CatalogError, type CatalogErrorCode } from "./catalog-error";
+export type { FileListCursor, FileListEntry, FileListPage } from "./catalog-listing";
+
 export type BlobDescriptor = {
   readonly checksum: string;
   readonly key: string;
@@ -30,18 +36,6 @@ type BlobRow = {
   readonly blob_key: string;
   readonly blob_size: number;
 };
-
-export type CatalogErrorCode = "invalid_path" | "not_found";
-
-export class CatalogError extends Error {
-  public constructor(
-    public readonly code: CatalogErrorCode,
-    message: string,
-  ) {
-    super(message);
-    this.name = "CatalogError";
-  }
-}
 
 const validatePath = (path: string): string => {
   if (path.length === 0 || path.includes("\0") || path.includes("\\") || isAbsolute(path)) {
@@ -109,6 +103,25 @@ export class FileCatalog {
     return toVersion(row);
   }
 
+  public getVersion(path: string, versionId: string): FileVersion {
+    const safePath = validatePath(path);
+    const row = this.database
+      .query<VersionRow, [string, string, string]>(
+        `SELECT id, path, blob_checksum, blob_key, blob_size, tombstone, created_at
+         FROM file_versions
+         WHERE volume_id = ? AND path = ? AND id = ?`,
+      )
+      .get(this.volumeId, safePath, versionId);
+    if (row === null || row.tombstone === 1) {
+      throw new CatalogError("not_found", "restorable version not found");
+    }
+    return toVersion(row);
+  }
+
+  public listCurrent(prefix: string, limit: number, cursor: FileListCursor | null): FileListPage {
+    return listCurrentFiles(this.database, this.volumeId, prefix, limit, cursor);
+  }
+
   public listBlobs(): readonly BlobDescriptor[] {
     return this.database
       .query<BlobRow, [string]>(
@@ -140,23 +153,12 @@ export class FileCatalog {
   }
 
   public restore(path: string, versionId: string): FileVersion {
-    const safePath = validatePath(path);
+    const version = this.getVersion(path, versionId);
+    if (version.blob === null) {
+      throw new CatalogError("not_found", "restorable version not found");
+    }
     return this.withTransaction(() => {
-      const row = this.database
-        .query<VersionRow, [string, string, string]>(
-          `SELECT id, path, blob_checksum, blob_key, blob_size, tombstone, created_at
-           FROM file_versions
-           WHERE volume_id = ? AND path = ? AND id = ?`,
-        )
-        .get(this.volumeId, safePath, versionId);
-      if (row === null || row.tombstone === 1) {
-        throw new CatalogError("not_found", "restorable version not found");
-      }
-      const version = toVersion(row);
-      if (version.blob === null) {
-        throw new CatalogError("not_found", "restorable version not found");
-      }
-      return this.insertVersion(safePath, version.blob);
+      return this.insertVersion(version.path, version.blob);
     });
   }
 

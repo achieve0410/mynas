@@ -1,7 +1,11 @@
 import { z } from "zod";
 
 import type { ByteRange } from "../../../packages/storage/src/adapter";
-import type { FileVersion } from "../../../packages/storage/src/catalog";
+import {
+  CatalogError,
+  type FileListCursor,
+  type FileVersion,
+} from "../../../packages/storage/src/catalog";
 import { MirrorError } from "../../../packages/storage/src/mirror";
 import type { BackendConfig } from "../../../packages/storage/src/registry";
 
@@ -35,6 +39,33 @@ const restoreSchema = z.object({
   path: z.string().min(1),
   versionId: z.string().uuid(),
 });
+
+const fileListQuerySchema = z.object({
+  cursor: z.string().optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+  prefix: z.string().default(""),
+});
+
+const fileListCursorSchema = z.object({
+  kind: z.enum(["file", "folder"]),
+  path: z.string(),
+});
+
+const decodeFileCursor = (cursor: string | undefined): FileListCursor | null => {
+  if (cursor === undefined) {
+    return null;
+  }
+  try {
+    return fileListCursorSchema.parse(
+      JSON.parse(Buffer.from(cursor, "base64url").toString("utf8")),
+    );
+  } catch (error) {
+    throw new CatalogError("invalid_page", "invalid file cursor", { cause: error });
+  }
+};
+
+const encodeFileCursor = (cursor: FileListCursor | null): string | null =>
+  cursor === null ? null : Buffer.from(JSON.stringify(cursor)).toString("base64url");
 
 const currentBlob = (versions: readonly FileVersion[]) => {
   const current = versions.at(-1);
@@ -101,6 +132,17 @@ export const registerStorageRoutes = (app: AppInstance, services: AppServices): 
   app.get("/api/v1/volumes/:id/status", async (context) =>
     context.json(await services.registry.getVolumeHealth(context.req.param("id"))),
   );
+
+  app.get("/api/v1/volumes/:volume/files", (context) => {
+    const query = fileListQuerySchema.parse(context.req.query());
+    const listing = services.registry
+      .getCatalog(context.req.param("volume"))
+      .listCurrent(query.prefix, query.limit, decodeFileCursor(query.cursor));
+    return context.json({
+      ...listing,
+      nextCursor: encodeFileCursor(listing.nextCursor),
+    });
+  });
 
   app.post("/api/v1/volumes/:id/scrub", async (context) => {
     const volume = await services.registry.getVolume(context.req.param("id"));
@@ -175,8 +217,8 @@ export const registerStorageRoutes = (app: AppInstance, services: AppServices): 
   });
 
   app.get("/api/v1/versions/:volume/:path{.+}", async (context) => {
-    const volume = await services.registry.getVolume(context.req.param("volume"));
-    return context.json(volume.versions(context.req.param("path")));
+    const catalog = services.registry.getCatalog(context.req.param("volume"));
+    return context.json(catalog.listVersions(context.req.param("path")));
   });
 
   app.post("/api/v1/versions/:volume/restore", async (context) => {

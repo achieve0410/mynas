@@ -152,7 +152,18 @@ export class MirrorVolume {
   }
 
   public async restore(path: string, versionId: string): Promise<FileVersion> {
-    return this.serializeWrite(async () => this.catalog.restore(path, versionId));
+    return this.serializeWrite(async () => {
+      const version = this.catalog.getVersion(path, versionId);
+      if (version.blob === null) {
+        throw new MirrorError("not_found", "restorable version not found");
+      }
+      for (const member of this.members) {
+        if ((await this.inspectReplica(member, version.blob)).status === "healthy") {
+          return this.catalog.restore(path, versionId);
+        }
+      }
+      throw new MirrorError("unrecoverable", "file is unrecoverable");
+    });
   }
 
   public async scrub(): Promise<ScrubReport> {

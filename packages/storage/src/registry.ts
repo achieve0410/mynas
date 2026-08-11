@@ -133,6 +133,16 @@ export class StorageRegistry {
     return backend;
   }
 
+  public getCatalog(id: string): FileCatalog {
+    const row = this.database
+      .query<{ readonly id: string }, [string]>("SELECT id FROM storage_volumes WHERE id = ?")
+      .get(id);
+    if (row === null) {
+      throw new RegistryError("not_found", "volume not found");
+    }
+    return new FileCatalog(this.database, row.id);
+  }
+
   public async getVolume(id: string): Promise<MirrorVolume> {
     const cached = this.volumes.get(id);
     if (cached !== undefined) {

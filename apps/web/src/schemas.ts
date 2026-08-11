@@ -37,6 +37,39 @@ export const repairReportSchema = z.object({
   unrecoverable: z.number().int().nonnegative(),
 });
 
+export const blobDescriptorSchema = z.object({
+  checksum: z.string().length(64),
+  key: z.string(),
+  size: z.number().int().nonnegative(),
+});
+export const fileVersionSchema = z.object({
+  blob: blobDescriptorSchema.nullable(),
+  createdAt: z.string(),
+  id: z.string().uuid(),
+  path: z.string(),
+  tombstone: z.boolean(),
+});
+export const fileListEntrySchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("folder"),
+    path: z.string(),
+  }),
+  z.object({
+    checksum: z.string().length(64),
+    createdAt: z.string(),
+    kind: z.literal("file"),
+    path: z.string(),
+    size: z.number().int().nonnegative(),
+    versionId: z.string().uuid(),
+  }),
+]);
+export const fileListingSchema = z.object({
+  entries: z.array(fileListEntrySchema),
+  nextCursor: z.string().nullable(),
+  prefix: z.string(),
+});
+export const fileVersionsSchema = z.array(fileVersionSchema);
+
 export const photoSchema = z.object({
   capturedAt: z.string(),
   checksum: z.string().length(64),
@@ -94,5 +127,8 @@ export const operationSchema = z.record(z.string(), z.unknown());
 export type Album = z.infer<typeof albumSchema>;
 export type ApiToken = z.infer<typeof apiTokenRecordSchema>;
 export type Backend = z.infer<typeof backendSchema>;
+export type FileListEntry = z.infer<typeof fileListEntrySchema>;
+export type FileListing = z.infer<typeof fileListingSchema>;
+export type FileVersion = z.infer<typeof fileVersionSchema>;
 export type Photo = z.infer<typeof photoSchema>;
 export type Volume = z.infer<typeof volumeSchema>;

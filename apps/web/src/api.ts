@@ -6,6 +6,9 @@ import {
   apiTokenSchema,
   apiTokensSchema,
   backendsSchema,
+  fileListingSchema,
+  fileVersionSchema,
+  fileVersionsSchema,
   healthSchema,
   ingestSchema,
   operationSchema,
@@ -102,6 +105,8 @@ export const api = {
       method: "DELETE",
     }),
   download: async (path: string): Promise<Blob> => (await request(path)).blob(),
+  downloadFile: async (volumeId: string, key: string): Promise<Blob> =>
+    (await request(`/api/v1/files/${encodeURIComponent(volumeId)}/${encodePath(key)}`)).blob(),
   getSetupStatus: () => json("/api/v1/setup/status", setupStatusSchema),
   getHealth: () => json("/api/v1/health", healthSchema),
   getSystemStatus: () => json("/api/v1/system/status", systemStatusSchema),
@@ -109,6 +114,25 @@ export const api = {
     json(`/api/v1/volumes/${encodeURIComponent(volumeId)}/status`, volumeHealthSchema),
   listAlbums: () => json("/api/v1/albums", albumsSchema),
   listBackends: () => json("/api/v1/backends", backendsSchema),
+  listFiles: (
+    volumeId: string,
+    prefix: string,
+    options: { readonly cursor?: string; readonly limit?: number } = {},
+  ) => {
+    const query = new URLSearchParams({
+      limit: String(options.limit ?? 50),
+      prefix,
+    });
+    if (options.cursor !== undefined) {
+      query.set("cursor", options.cursor);
+    }
+    return json(
+      `/api/v1/volumes/${encodeURIComponent(volumeId)}/files?${query.toString()}`,
+      fileListingSchema,
+    );
+  },
+  listFileVersions: (volumeId: string, key: string) =>
+    json(`/api/v1/versions/${encodeURIComponent(volumeId)}/${encodePath(key)}`, fileVersionsSchema),
   listPhotos: () => json("/api/v1/photos", photosSchema),
   listTokens: () => json("/api/v1/tokens", apiTokensSchema),
   listVolumes: () => json("/api/v1/volumes", volumesSchema),
@@ -128,6 +152,11 @@ export const api = {
     }),
   revokeToken: (id: string) =>
     request(`/api/v1/tokens/${encodeURIComponent(id)}`, { method: "DELETE" }),
+  restoreFileVersion: (volumeId: string, key: string, versionId: string) =>
+    json(`/api/v1/versions/${encodeURIComponent(volumeId)}/restore`, fileVersionSchema, {
+      body: JSON.stringify({ path: key, versionId }),
+      method: "POST",
+    }),
   setup: (username: string, password: string) =>
     json("/api/v1/setup", operationSchema, {
       body: JSON.stringify({ password, username }),

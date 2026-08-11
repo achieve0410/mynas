@@ -14,13 +14,16 @@ export default defineConfig({
     trace: "retain-on-failure",
     viewport: { height: 900, width: 1440 },
   },
-  webServer: {
-    command: "bun tests/browser/server.ts",
-    reuseExistingServer: false,
-    stderr: "pipe",
-    stdout: "pipe",
-    timeout: 15_000,
-    url: "http://127.0.0.1:7331/api/v1/health",
-  },
+  webServer:
+    process.env.MYNAS_BROWSER_SERVER === "external"
+      ? undefined
+      : {
+          command: "bun tests/browser/server.ts",
+          reuseExistingServer: false,
+          stderr: "pipe",
+          stdout: "pipe",
+          timeout: 15_000,
+          url: "http://127.0.0.1:7331/api/v1/health",
+        },
   workers: 1,
 });
