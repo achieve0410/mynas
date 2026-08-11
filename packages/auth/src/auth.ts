@@ -138,25 +138,29 @@ export class AuthService {
     password: string,
     _peerAddress: string,
   ): Promise<SessionCredential> {
+    const user = await this.verifyPassword(username, password);
+    const token = createSecret();
+    const createdAt = this.now();
+    const expiresAt = new Date(createdAt.getTime() + SESSION_LIFETIME_MS);
+    this.database
+      .query("INSERT INTO sessions (id_hash, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)")
+      .run(sha256(token), user.id, createdAt.toISOString(), expiresAt.toISOString());
+
+    return {
+      expiresAt: expiresAt.toISOString(),
+      token,
+      user,
+    };
+  }
+
+  public async verifyPassword(username: string, password: string): Promise<User> {
     const row = this.database
       .query<UserRow, [string]>("SELECT id, username, password_hash FROM users WHERE username = ?")
       .get(username);
     if (row === null || !(await Bun.password.verify(password, row.password_hash))) {
       throw new AuthError("authentication_failed", "username or password is invalid");
     }
-
-    const token = createSecret();
-    const createdAt = this.now();
-    const expiresAt = new Date(createdAt.getTime() + SESSION_LIFETIME_MS);
-    this.database
-      .query("INSERT INTO sessions (id_hash, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)")
-      .run(sha256(token), row.id, createdAt.toISOString(), expiresAt.toISOString());
-
-    return {
-      expiresAt: expiresAt.toISOString(),
-      token,
-      user: toUser(row),
-    };
+    return toUser(row);
   }
 
   public authenticateSession(token: string): User {

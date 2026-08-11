@@ -1,3 +1,49 @@
+# MyNAS v0.2.0 release candidate
+
+The v0.2.0 code on `main` is prepared for the first self-contained Apple
+Silicon package. The immutable GitHub release and its native assets are created
+only when the matching `v0.2.0` tag is pushed; v0.1.0 remains the historical
+source/container release and has no macOS archive.
+
+## Highlights
+
+- Catalog-first folder browsing, bounded binary-prefix pagination, version
+  history, checksum-verified restore, and authenticated download
+- Persisted automatic catalog-backup and mirror-scrub policy with independent
+  run history, retention, destination identity, overlap serialization, and
+  graceful shutdown
+- Self-contained Apple Silicon runtime with Bun, Sharp/libvips, the production
+  web build, licenses/notices, atomic clean-HOME installer, and SHA-256 archive
+- Password-stdin offline bootstrap for one owner, two distinct filesystem
+  devices, and a healthy `photos` mirror; exact reruns are database-idempotent
+- Mode-0600 launchd lifecycle with staged replacement rollback, loaded/running
+  status, explicit environment selection, and data-preserving uninstall
+- Same-origin JSON owner setup, loopback-by-default service binding, artifact
+  path/permission audit, immutable tag/version coupling, and split read/write
+  release credentials
+
+## Verification surfaces
+
+- Focused RED-to-GREEN tests for bootstrap safety, launchd rollback, installer
+  recovery, packaging layout, workflow permissions, and bundled CSP
+- Full TypeScript, Biome, production web build, repository test, and real
+  Chromium gates
+- Clean-HOME package install, exact-repeat and bad-input bootstrap, temporary
+  distinct-device APFS validation, live packaged HTTP/photo preview, launchd
+  lifecycle, checksum, archive-path/mode scan, and cleanup proof
+
+## Remaining paid-beta limitations
+
+- Package is Apple Silicon-only and not Apple-notarized
+- Photo ingestion remains JPEG-only and foreground processing remains limited
+  compared with mature photo products
+- No direct internet-exposure support, TLS termination, sharing, or encryption
+  at rest
+- A separate filesystem device is enforceable; truly independent physical
+  failure domains remain the operator's responsibility
+- Product-market fit and willingness to pay remain unproven until external
+  paid-beta users validate them
+
 # MyNAS v0.1.0
 
 MyNAS v0.1.0 is the first public release of a macOS-first, localhost-first NAS with

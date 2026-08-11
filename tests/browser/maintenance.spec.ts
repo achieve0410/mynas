@@ -3,8 +3,12 @@ import { expect, test } from "@playwright/test";
 
 import { prepareOwnerAndMirror } from "./photo-setup";
 
-const artifactDirectory = ".artifacts/qa/maintenance";
-const backupDirectory = "/tmp/mynas-playwright-maintenance/백업-保管";
+const artifactDirectory =
+  process.env.MYNAS_BROWSER_MAINTENANCE_ARTIFACT_DIR ??
+  ".artifacts/qa/maintenance";
+const backupDirectory =
+  process.env.MYNAS_BROWSER_MAINTENANCE_DIR ??
+  "/tmp/mynas-playwright-maintenance/백업-保管";
 
 test("settings configures and runs observable maintenance", async ({ page, request }) => {
   const token = await prepareOwnerAndMirror(request);

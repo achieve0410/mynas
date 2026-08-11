@@ -1,0 +1,67 @@
+#!/bin/sh
+set -eu
+umask 077
+
+SOURCE=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+INSTALL_ROOT=${MYNAS_INSTALL_ROOT:-"$HOME/Library/Application Support/MyNAS/runtime"}
+BIN_DIR=${MYNAS_BIN_DIR:-"$HOME/.local/bin"}
+STAGED="$INSTALL_ROOT.new"
+PREVIOUS="$INSTALL_ROOT.previous"
+COMMAND="$BIN_DIR/mynas"
+
+valid_runtime() {
+  [ -f "$1/VERSION" ] &&
+    [ -f "$1/bin/bun" ] &&
+    [ -f "$1/bin/mynas" ]
+}
+
+mkdir -p "$(dirname "$INSTALL_ROOT")" "$BIN_DIR"
+if [ -e "$PREVIOUS" ]; then
+  if valid_runtime "$INSTALL_ROOT"; then
+    rm -rf "$PREVIOUS"
+  elif valid_runtime "$PREVIOUS"; then
+    rm -rf "$INSTALL_ROOT"
+    mv "$PREVIOUS" "$INSTALL_ROOT"
+  else
+    printf '%s\n' "could not recover interrupted MyNAS runtime update" >&2
+    exit 1
+  fi
+fi
+if ! valid_runtime "$SOURCE"; then
+  printf '%s\n' "invalid MyNAS runtime bundle at $SOURCE" >&2
+  exit 1
+fi
+if [ -e "$COMMAND" ] || [ -L "$COMMAND" ]; then
+  if [ ! -L "$COMMAND" ] || [ "$(readlink "$COMMAND")" != "$INSTALL_ROOT/bin/mynas" ]; then
+    printf '%s\n' "refusing to replace unrelated command at $COMMAND" >&2
+    exit 1
+  fi
+fi
+rm -rf "$STAGED"
+mkdir -p "$STAGED"
+cp -R "$SOURCE"/. "$STAGED"/
+if ! valid_runtime "$STAGED"; then
+  rm -rf "$STAGED"
+  printf '%s\n' "staged MyNAS runtime is incomplete" >&2
+  exit 1
+fi
+if [ -e "$INSTALL_ROOT" ]; then
+  mv "$INSTALL_ROOT" "$PREVIOUS"
+fi
+if ! mv "$STAGED" "$INSTALL_ROOT"; then
+  if [ -e "$PREVIOUS" ]; then
+    mv "$PREVIOUS" "$INSTALL_ROOT"
+  fi
+  exit 1
+fi
+if ! ln -sfn "$INSTALL_ROOT/bin/mynas" "$COMMAND"; then
+  rm -rf "$INSTALL_ROOT"
+  if [ -e "$PREVIOUS" ]; then
+    mv "$PREVIOUS" "$INSTALL_ROOT"
+  fi
+  exit 1
+fi
+rm -rf "$PREVIOUS"
+
+printf '%s\n' "Installed MyNAS at $INSTALL_ROOT"
+printf '%s\n' "Add $BIN_DIR to PATH, then run: mynas bootstrap --help"

@@ -4,10 +4,11 @@
 
 | Version | Supported |
 | --- | --- |
-| 0.1.x | Yes |
+| 0.2.x | Yes |
+| 0.1.x | No |
 | Earlier or unreleased snapshots | No |
 
-Security fixes are provided for the current v0.1 patch line.
+Security fixes are provided for the current v0.2 patch line.
 
 ## Reporting a vulnerability
 
@@ -35,7 +36,7 @@ MyNAS is designed for a trusted local machine or private cluster:
 - Logs redact authorization and password fields and omit machine identity.
 - Mirror writes stop when either member is unavailable.
 
-MyNAS v0.1.0 does not provide TLS termination, application-level encryption at
+MyNAS v0.2.0 does not provide TLS termination, application-level encryption at
 rest, sandboxing of the host directories you explicitly grant, multi-user
 authorization, or safe direct internet exposure. Use operating-system
 permissions, encrypted disks, Kubernetes Secrets, private networking, and a

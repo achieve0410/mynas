@@ -1,0 +1,16 @@
+#!/bin/sh
+set -eu
+
+SELF=$0
+while [ -L "$SELF" ]; do
+  TARGET=$(readlink "$SELF")
+  case "$TARGET" in
+    /*) SELF=$TARGET ;;
+    *) SELF=$(dirname "$SELF")/$TARGET ;;
+  esac
+done
+ROOT=$(CDPATH= cd -- "$(dirname -- "$SELF")/.." && pwd)
+
+export MYNAS_EXECUTABLE="$ROOT/bin/mynas"
+export MYNAS_WEB_ROOT="$ROOT/share/mynas/web"
+exec "$ROOT/bin/bun" "$ROOT/lib/mynas/main.js" "$@"

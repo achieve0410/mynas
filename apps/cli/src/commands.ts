@@ -58,7 +58,7 @@ const writeJson = (dependencies: CliDependencies, value: unknown): void => {
   dependencies.stdout(JSON.stringify(value));
 };
 
-const readPassword = async (dependencies: CliDependencies): Promise<string> => {
+export const readPassword = async (dependencies: CliDependencies): Promise<string> => {
   const input = await dependencies.readStdin();
   const password = input.endsWith("\r\n")
     ? input.slice(0, -2)

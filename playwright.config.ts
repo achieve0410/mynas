@@ -1,13 +1,17 @@
 import { defineConfig } from "@playwright/test";
 
+const baseURL = process.env.MYNAS_BROWSER_BASE_URL ?? "http://127.0.0.1:7331";
+
 export default defineConfig({
   expect: { timeout: 5_000 },
   fullyParallel: false,
-  outputDir: ".artifacts/qa/photos/playwright-results",
+  outputDir:
+    process.env.MYNAS_BROWSER_PLAYWRIGHT_OUTPUT ??
+    ".artifacts/qa/photos/playwright-results",
   reporter: [["list"]],
   testDir: "tests/browser",
   use: {
-    baseURL: "http://127.0.0.1:7331",
+    baseURL,
     channel: "chrome",
     headless: true,
     screenshot: "only-on-failure",
@@ -23,7 +27,7 @@ export default defineConfig({
           stderr: "pipe",
           stdout: "pipe",
           timeout: 15_000,
-          url: "http://127.0.0.1:7331/api/v1/health",
+          url: `${baseURL}/api/v1/health`,
         },
   workers: 1,
 });

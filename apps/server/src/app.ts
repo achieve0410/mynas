@@ -73,7 +73,7 @@ export const createApp = (options: CreateAppOptions): Hono<AppEnvironment> => {
   registerStorageRoutes(app, services);
   registerPhotoRoutes(app, services);
   registerMaintenanceRoutes(app, services);
-  registerWebRoutes(app);
+  registerWebRoutes(app, options.environment.MYNAS_WEB_ROOT);
 
   return app;
 };

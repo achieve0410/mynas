@@ -53,6 +53,43 @@ describe("owner authentication API", () => {
     expect(response.status).toBe(401);
   });
 
+  test("rejects cross-origin and browser-simple owner setup requests", async () => {
+    const body = JSON.stringify({
+      password: "attacker chosen passphrase",
+      username: "attacker",
+    });
+    const crossOrigin = await app.request("/api/v1/setup", {
+      body,
+      headers: {
+        "content-type": "application/json",
+        origin: "https://attacker.invalid",
+      },
+      method: "POST",
+    });
+    expect(crossOrigin.status).toBe(403);
+
+    const simpleRequest = await app.request("/api/v1/setup", {
+      body,
+      headers: { "content-type": "text/plain" },
+      method: "POST",
+    });
+    expect(simpleRequest.status).toBe(415);
+
+    const rebound = await app.request("http://attacker.invalid/api/v1/setup", {
+      body,
+      headers: {
+        "content-type": "application/json",
+        host: "attacker.invalid",
+        origin: "http://attacker.invalid",
+      },
+      method: "POST",
+    });
+    expect(rebound.status).toBe(403);
+    expect(await (await app.request("/api/v1/setup/status")).json()).toEqual({
+      setupComplete: false,
+    });
+  });
+
   test("sets up one loopback owner, logs in, and issues a revocable API token", async () => {
     const setup = await app.request("/api/v1/setup", {
       body: JSON.stringify({
@@ -111,7 +148,7 @@ describe("owner authentication API", () => {
       headers: { authorization: `Bearer ${apiToken.token}` },
     });
     expect(status.status).toBe(200);
-    expect(await status.json()).toMatchObject({ setupComplete: true, version: "0.1.0" });
+    expect(await status.json()).toMatchObject({ setupComplete: true, version: "0.2.0" });
 
     const revoked = await app.request(`/api/v1/tokens/${apiToken.id}`, {
       headers: { authorization: `Bearer ${session.token}` },

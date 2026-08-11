@@ -13,7 +13,9 @@ import {
   verifyTokenLifecycle,
 } from "./photo-setup";
 
-const ARTIFACT_DIR = ".artifacts/qa/photos";
+const ARTIFACT_DIR =
+  process.env.MYNAS_BROWSER_PHOTOS_ARTIFACT_DIR ?? ".artifacts/qa/photos";
+const dataDirectory = process.env.MYNAS_BROWSER_DATA_DIR ?? "/tmp/mynas-playwright";
 
 test("photo flagship completes the real browser journey", async ({ browser, page, request }) => {
   const token = await prepareOwnerAndMirror(request);
@@ -128,13 +130,13 @@ test("photo flagship completes the real browser journey", async ({ browser, page
   const original = await readFile(downloadPath);
   const sha256 = verifyOriginalChecksum(original, syntheticJpegSha256());
 
-  await rename("/tmp/mynas-playwright/disk-b", "/tmp/mynas-playwright/disk-b-offline");
+  await rename(`${dataDirectory}/disk-b`, `${dataDirectory}/disk-b-offline`);
   try {
     await page.goto("/photos");
     await expect(page.getByText("Uploads paused")).toBeVisible();
     await expect(page.getByTestId("photo-upload")).toBeDisabled();
   } finally {
-    await rename("/tmp/mynas-playwright/disk-b-offline", "/tmp/mynas-playwright/disk-b");
+  await rename(`${dataDirectory}/disk-b-offline`, `${dataDirectory}/disk-b`);
   }
   await page.reload();
   await expect(page.getByTestId("photo-upload")).toBeEnabled();
@@ -208,7 +210,7 @@ test("photo flagship completes the real browser journey", async ({ browser, page
   const loginScreenshots: string[] = [];
   for (const [viewportName, viewport] of viewports) {
     await anonymousPage.setViewportSize(viewport);
-    const loginResponse = await anonymousPage.goto("http://127.0.0.1:7331/login");
+    const loginResponse = await anonymousPage.goto("/login");
     expect(loginResponse?.status()).toBe(200);
     await expect(anonymousPage.getByRole("heading", { level: 1 })).toBeVisible();
     await anonymousPage.evaluate(() => document.fonts.ready);

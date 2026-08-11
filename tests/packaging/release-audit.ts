@@ -15,6 +15,7 @@ const forbiddenContent = [
   new RegExp("g" + "h[pousr]_[A-Za-z0-9_]{20,}"),
 ] as const;
 const emailPattern = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi;
+const allowedPublicEmails = new Set(["licensing@fsf.org"]);
 const publicIdentity = "achieve0410\u0000achieve0410@users.noreply.github.com";
 
 const trackedOutput = requireSuccess(
@@ -39,7 +40,13 @@ for (const path of trackedFiles) {
     }
   }
   const emails = text.match(emailPattern) ?? [];
-  if (emails.some((email) => !email.endsWith("@users.noreply.github.com"))) {
+  if (
+    emails.some(
+      (email) =>
+        !email.endsWith("@users.noreply.github.com") &&
+        !allowedPublicEmails.has(email.toLowerCase()),
+    )
+  ) {
     throw new Error(`non-public email address found in ${path}`);
   }
 }

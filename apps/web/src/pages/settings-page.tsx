@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, Copy, KeyRound, Server, Trash2 } from "lucide-react";
 import { type FormEvent, useState } from "react";
 
+import { MYNAS_VERSION } from "../../../../packages/version/src/version";
 import { api } from "../api";
 import { MaintenanceSettings } from "../components/maintenance-settings";
 
@@ -43,7 +44,7 @@ export const SettingsPage = () => {
           </span>
           <div>
             <h2>Service</h2>
-            <p>MyNAS v0.1.0, bound to this machine by default.</p>
+            <p>MyNAS v{MYNAS_VERSION}, bound to this machine by default.</p>
           </div>
         </div>
         <dl className="definition-list">

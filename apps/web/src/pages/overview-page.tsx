@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { ArrowRight, CheckCircle2, Cloud, Folder, HardDrive } from "lucide-react";
 
+import { MYNAS_VERSION } from "../../../../packages/version/src/version";
 import { api } from "../api";
 import { navigate } from "../router";
 
@@ -56,7 +57,7 @@ export const OverviewPage = () => {
           <h1>Your private storage, at a glance</h1>
           <p>Health, protection, and the last things that deserve your attention.</p>
         </div>
-        <span className="version-badge">v{status.data?.version ?? "0.1.0"}</span>
+        <span className="version-badge">v{status.data?.version ?? MYNAS_VERSION}</span>
       </header>
       {backends.isError || volumes.isError || status.isError ? (
         <section className="status-strip warning-strip">

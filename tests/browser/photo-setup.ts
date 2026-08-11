@@ -3,7 +3,7 @@ import { mkdir } from "node:fs/promises";
 import { type APIRequestContext, expect, type Page } from "@playwright/test";
 import { z } from "zod";
 
-const dataDir = "/tmp/mynas-playwright";
+const dataDir = process.env.MYNAS_BROWSER_DATA_DIR ?? "/tmp/mynas-playwright";
 const ownerPassword = "synthetic browser owner passphrase";
 const loginSchema = z.object({ token: z.string().min(32) });
 const recordsSchema = z.array(z.object({ id: z.string() }).passthrough());

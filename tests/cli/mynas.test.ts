@@ -23,6 +23,18 @@ const createDependencies = (
 });
 
 describe("mynas CLI", () => {
+  test("returns the version exactly once with a successful exit", async () => {
+    const output: string[] = [];
+
+    const exitCode = await runCli(
+      ["--version"],
+      createDependencies(async () => Response.json({}), output, new Map()),
+    );
+
+    expect(exitCode).toBe(0);
+    expect(output).toEqual(["0.2.0\n"]);
+  });
+
   test("lists catalog backup and restore commands", async () => {
     const output: string[] = [];
 

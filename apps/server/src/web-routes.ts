@@ -2,12 +2,12 @@ import { join } from "node:path";
 
 import type { AppInstance } from "./types";
 
-const webRoot = join(import.meta.dir, "../../web/dist");
+const defaultWebRoot = join(import.meta.dir, "../../web/dist");
 const contentSecurityPolicy = [
   "default-src 'self'",
   "base-uri 'none'",
   "connect-src 'self'",
-  "font-src 'self'",
+  "font-src 'self' data:",
   "form-action 'self'",
   "frame-ancestors 'none'",
   "img-src 'self' blob:",
@@ -33,7 +33,7 @@ const serve = async (path: string): Promise<Response | null> => {
   });
 };
 
-export const registerWebRoutes = (app: AppInstance): void => {
+export const registerWebRoutes = (app: AppInstance, webRoot = defaultWebRoot): void => {
   app.get("*", async (context) => {
     const requestPath = context.req.path;
     if (requestPath.startsWith("/api/")) {

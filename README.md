@@ -1,6 +1,6 @@
 # MyNAS
 
-MyNAS v0.1.0 is a macOS-first, localhost-first NAS service with mirrored storage,
+MyNAS v0.2.0 is a macOS-first, localhost-first NAS service with mirrored storage,
 integrity repair, S3-compatible backends, and a private photo library. It ships
 as a strict TypeScript/Bun service, CLI, responsive web dashboard, Docker image,
 Compose stack, and single-replica Kubernetes manifest.
@@ -23,6 +23,8 @@ directories and remain responsible for the underlying filesystems and backups.
   and albums
 - One localhost owner, expiring browser sessions, and revocable API tokens
 - Responsive dashboard with bundled fonts and no external web dependencies
+- Self-contained Apple Silicon runtime bundle, guided local mirror bootstrap,
+  and managed launchd lifecycle
 - Non-root Docker runtime and a one-replica Kubernetes deployment
 
 ## Safety model
@@ -46,7 +48,11 @@ Do not expose port 7331 directly to an untrusted network. See
 
 ## Requirements
 
-Native development and operation:
+Packaged native operation:
+
+- Apple Silicon macOS
+
+Native development:
 
 - macOS
 - [Bun](https://bun.sh/) 1.3.14 or newer
@@ -56,7 +62,81 @@ Container operation:
 - Docker Desktop with Compose
 - A host directory shared with Docker Desktop when using local backends
 
-## Native macOS quick start
+## Packaged macOS quick start
+
+For a tagged v0.2.0-or-newer release that contains macOS assets, download
+`mynas-darwin-arm64.tar.gz` and its `.sha256` file from that same release,
+then verify and install them. The existing v0.1.0 release predates this
+packaging pipeline and has no native archive.
+
+```sh
+shasum -a 256 --check mynas-darwin-arm64.tar.gz.sha256
+tar -xzf mynas-darwin-arm64.tar.gz
+./mynas-darwin-arm64/install
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+The installer atomically places the self-contained Bun runtime, MyNAS
+application, native Sharp libraries, and web assets under
+`$HOME/Library/Application Support/MyNAS/runtime`. It does not require a
+system Bun installation and does not touch catalog or mirror data.
+It refuses to replace an unrelated `~/.local/bin/mynas` command and recovers
+the previous runtime if an update was interrupted. A source checkout on Apple
+Silicon can produce the same layout with `bun run package:macos`.
+
+Choose two existing, independent storage locations. The bootstrap creates
+missing directories, initializes the owner and catalog, records them as
+`primary` and `secondary`, creates a `photos` mirror, verifies it as healthy,
+and is safe to repeat only with the same password and topology:
+
+```sh
+printf 'MyNAS owner password: ' >&2
+IFS= read -r -s MYNAS_PASSWORD
+printf '\n' >&2
+printf '%s\n' "$MYNAS_PASSWORD" |
+  mynas bootstrap \
+    --data-dir "$HOME/Library/Application Support/MyNAS/data" \
+    --primary-root "/Volumes/Primary/MyNAS" \
+    --secondary-root "/Volumes/Secondary/MyNAS" \
+    --password-stdin
+unset MYNAS_PASSWORD
+
+mynas service install \
+  --data-dir "$HOME/Library/Application Support/MyNAS/data"
+mynas service status
+open http://127.0.0.1:7331
+```
+
+The owner password is read from one standard-input line and never printed in
+the bootstrap receipt. A wrong password or changed storage root is refused
+without silently replacing the existing topology. The two roots must resolve
+to distinct filesystem devices. Separate APFS volumes can still share one
+physical disk, so choosing independent physical failure domains remains the
+operator's responsibility.
+
+`service install` writes a mode-0600 launch agent at
+`~/Library/LaunchAgents/com.mynas.service.plist`, replaces an already loaded
+instance, and keeps the service on loopback by default. Logs are stored under
+`<data-dir>/logs`. Use `--no-start` to inspect the plist without loading it.
+`mynas service uninstall` removes only the launch agent; it never deletes the
+catalog, runtime, or backend data. Re-run the installer and `service install`
+to repair or update the runtime.
+
+For S3 or other service-only environment values, select each existing variable
+explicitly during installation, for example `--env AWS_ACCESS_KEY_ID --env
+AWS_SECRET_ACCESS_KEY`. Selected values are XML-escaped into the mode-0600
+plist; no unselected shell environment is copied. A non-loopback service
+automatically persists the already-required `MYNAS_ALLOW_REMOTE=true`.
+
+Release archives are SHA-256 checksummed and the included Bun executable
+retains the ad-hoc signature present on the pinned Bun runtime; this verifies
+file structure, not an Apple Team identity. The archive includes the MyNAS
+license, Bun redistribution notice, Sharp package licenses, full GPL/LGPL
+terms, and the libvips source/build notice. MyNAS releases are not yet
+Apple-notarized. Inspect the downloaded archive and approve its Terminal
+execution according to your macOS security policy.
+
+## Source macOS quick start
 
 ```sh
 git clone https://github.com/achieve0410/mynas.git
@@ -335,7 +415,7 @@ without an Ingress or TLS policy.
 
 ## Photos
 
-Create a healthy mirror with the exact ID `photos` before uploading. v0.1.0
+Create a healthy mirror with the exact ID `photos` before uploading. v0.2.0
 accepts JPEG originals, records dimensions and import time, generates WebP
 previews, deduplicates by SHA-256, and supports timeline and album views.
 Originals are downloaded only through an explicit action.
@@ -367,22 +447,22 @@ data.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) before opening a change.
 
-## Known limitations in v0.1.0
+## Known limitations in v0.2.0
 
 - Mirrors have exactly two members; there is no parity or multi-member RAID.
-- The Files page addresses known object paths; it is not a directory browser.
 - Photo ingestion is JPEG-only.
-- File uploads are limited to 64 MiB and photo uploads to 25 MiB in v0.1.0.
-- Repair and scrub operations are synchronous.
+- File uploads are limited to 64 MiB and photo uploads to 25 MiB.
+- Maintenance is serialized and scheduled, but has no external alert delivery.
 - S3 buckets and local backend directories must already exist.
 - The Kubernetes manifest is single-replica and does not mount a data backend.
 - No application-level encryption at rest, TLS termination, sharing links,
   remote-user administration, mobile app, or automatic disk management.
-- Only macOS and the packaged Linux container have been exercised for v0.1.0.
+- Native packaging is Apple Silicon-only; the Linux container is the other
+  exercised packaged runtime.
 
 ## Release and support
 
-- [v0.1.0 release notes](RELEASE_NOTES.md)
+- [v0.2.0 release candidate and v0.1.0 history](RELEASE_NOTES.md)
 - [Security policy](SECURITY.md)
 - [Code of Conduct](CODE_OF_CONDUCT.md)
 - [Contribution guide](CONTRIBUTING.md)

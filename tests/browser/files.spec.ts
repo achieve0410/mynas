@@ -4,7 +4,8 @@ import { z } from "zod";
 
 import { prepareOwnerAndMirror } from "./photo-setup";
 
-const artifactDirectory = ".artifacts/qa/files";
+const artifactDirectory =
+  process.env.MYNAS_BROWSER_FILES_ARTIFACT_DIR ?? ".artifacts/qa/files";
 const filePath = "documents/복구-履歴.txt";
 const versionSchema = z.object({ id: z.string().uuid() });
 
