@@ -39,4 +39,12 @@ describe("macOS release packaging", () => {
       .parse(JSON.parse(await readFile(resolve(root, "package.json"), "utf8")));
     expect(packageJson.private).toBe(true);
   });
+
+  test("installs pinned Docker Compose tooling for full verification", async () => {
+    const workflow = await readFile(resolve(root, ".github/workflows/release-macos.yml"), "utf8");
+    expect(workflow).toContain("docker-29.5.2.tgz");
+    expect(workflow).toContain("e4914a334e71297dd1b172f0332d5045539e12d00429ddc330da9d2ad0e3995a");
+    expect(workflow).toContain("docker-compose-darwin-aarch64");
+    expect(workflow).toContain("44ea135a29b176d959aed927d61d3483b3f0e7b4a2025ab7812aa00086916f13");
+  });
 });

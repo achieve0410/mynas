@@ -28,6 +28,25 @@ jobs:
           cache: false
           go-version: 1.25.4
       - run: bun install --frozen-lockfile
+      - name: Install pinned Docker Compose tooling
+        run: |
+          TOOL_ROOT="$RUNNER_TEMP/mynas-release-tools"
+          mkdir -p "$TOOL_ROOT/bin" "$TOOL_ROOT/docker-config/cli-plugins"
+          curl --fail --location \
+            https://download.docker.com/mac/static/stable/aarch64/docker-29.5.2.tgz \
+            --output "$TOOL_ROOT/docker.tgz"
+          echo "e4914a334e71297dd1b172f0332d5045539e12d00429ddc330da9d2ad0e3995a  $TOOL_ROOT/docker.tgz" \
+            | shasum --algorithm 256 --check
+          tar --extract --gzip --file "$TOOL_ROOT/docker.tgz" \
+            --directory "$TOOL_ROOT/bin" --strip-components 1 docker/docker
+          curl --fail --location \
+            https://github.com/docker/compose/releases/download/v2.39.2/docker-compose-darwin-aarch64 \
+            --output "$TOOL_ROOT/docker-config/cli-plugins/docker-compose"
+          echo "44ea135a29b176d959aed927d61d3483b3f0e7b4a2025ab7812aa00086916f13  $TOOL_ROOT/docker-config/cli-plugins/docker-compose" \
+            | shasum --algorithm 256 --check
+          chmod +x "$TOOL_ROOT/docker-config/cli-plugins/docker-compose"
+          echo "$TOOL_ROOT/bin" >> "$GITHUB_PATH"
+          echo "DOCKER_CONFIG=$TOOL_ROOT/docker-config" >> "$GITHUB_ENV"
       - name: Install pinned release scanners
         run: |
           go install github.com/zricethezav/gitleaks/v8@v8.30.0
