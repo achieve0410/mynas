@@ -31,7 +31,12 @@ jobs:
       - name: Install pinned release scanners
         run: |
           go install github.com/zricethezav/gitleaks/v8@v8.30.0
-          go install github.com/trufflesecurity/trufflehog/v3@v3.96.0
+          curl --fail --location \
+            https://github.com/trufflesecurity/trufflehog/releases/download/v3.96.0/trufflehog_3.96.0_darwin_arm64.tar.gz \
+            --output /tmp/trufflehog.tar.gz
+          echo "87478306b95ca2420cfb844b7582383ac60b922e262350a0088e797f328d2e62  /tmp/trufflehog.tar.gz" \
+            | shasum --algorithm 256 --check
+          tar --extract --gzip --file /tmp/trufflehog.tar.gz --directory "$(go env GOPATH)/bin" trufflehog
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
       - name: Validate tag matches package version
         if: startsWith(github.ref, 'refs/tags/')

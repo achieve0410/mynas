@@ -19,6 +19,9 @@ describe("macOS release packaging", () => {
     expect(workflow).toContain("contents: read");
     expect(workflow).toContain("contents: write");
     expect(workflow).toContain("publish:");
+    expect(workflow).not.toContain("go install github.com/trufflesecurity/trufflehog");
+    expect(workflow).toContain("trufflehog_3.96.0_darwin_arm64.tar.gz");
+    expect(workflow).toContain("87478306b95ca2420cfb844b7582383ac60b922e262350a0088e797f328d2e62");
     expect(workflow).not.toContain("--clobber");
     for (const line of workflow.split("\n").filter((line) => line.includes("uses:"))) {
       expect(line).toMatch(/uses: [^@]+@[0-9a-f]{40}(?:\s|$)/);
