@@ -6,8 +6,7 @@ export default defineConfig({
   expect: { timeout: 5_000 },
   fullyParallel: false,
   outputDir:
-    process.env.MYNAS_BROWSER_PLAYWRIGHT_OUTPUT ??
-    ".artifacts/qa/photos/playwright-results",
+    process.env.MYNAS_BROWSER_PLAYWRIGHT_OUTPUT ?? ".artifacts/qa/photos/playwright-results",
   reporter: [["list"]],
   testDir: "tests/browser",
   use: {

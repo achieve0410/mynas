@@ -13,8 +13,7 @@ import {
   verifyTokenLifecycle,
 } from "./photo-setup";
 
-const ARTIFACT_DIR =
-  process.env.MYNAS_BROWSER_PHOTOS_ARTIFACT_DIR ?? ".artifacts/qa/photos";
+const ARTIFACT_DIR = process.env.MYNAS_BROWSER_PHOTOS_ARTIFACT_DIR ?? ".artifacts/qa/photos";
 const dataDirectory = process.env.MYNAS_BROWSER_DATA_DIR ?? "/tmp/mynas-playwright";
 
 test("photo flagship completes the real browser journey", async ({ browser, page, request }) => {
@@ -136,7 +135,7 @@ test("photo flagship completes the real browser journey", async ({ browser, page
     await expect(page.getByText("Uploads paused")).toBeVisible();
     await expect(page.getByTestId("photo-upload")).toBeDisabled();
   } finally {
-  await rename(`${dataDirectory}/disk-b-offline`, `${dataDirectory}/disk-b`);
+    await rename(`${dataDirectory}/disk-b-offline`, `${dataDirectory}/disk-b`);
   }
   await page.reload();
   await expect(page.getByTestId("photo-upload")).toBeEnabled();

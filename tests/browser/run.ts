@@ -80,11 +80,7 @@ try {
     MYNAS_BROWSER_BASE_URL: `http://127.0.0.1:${serverPort}`,
     MYNAS_BROWSER_DATA_DIR: dataDirectory,
     MYNAS_BROWSER_FILES_ARTIFACT_DIR: join(qaRoot, "artifacts", "files"),
-    MYNAS_BROWSER_MAINTENANCE_ARTIFACT_DIR: join(
-      qaRoot,
-      "artifacts",
-      "maintenance",
-    ),
+    MYNAS_BROWSER_MAINTENANCE_ARTIFACT_DIR: join(qaRoot, "artifacts", "maintenance"),
     MYNAS_BROWSER_MAINTENANCE_DIR: maintenanceDirectory,
     MYNAS_BROWSER_PHOTOS_ARTIFACT_DIR: join(qaRoot, "artifacts", "photos"),
     MYNAS_BROWSER_PLAYWRIGHT_OUTPUT: join(qaRoot, "playwright-results"),
