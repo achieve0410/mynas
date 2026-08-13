@@ -41,3 +41,5 @@ jobs:
           echo "$HOME/go/bin" >> "$GITHUB_PATH"
       - run: bun run verify
       - run: bun run qa:release
+        env:
+          MYNAS_RELEASE_AUDIT_REF: ${{ github.event.pull_request.head.sha || github.sha }}

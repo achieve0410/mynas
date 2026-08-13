@@ -17,6 +17,7 @@ const forbiddenContent = [
 const emailPattern = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi;
 const allowedPublicEmails = new Set(["licensing@fsf.org"]);
 const publicIdentity = "achieve0410\u0000achieve0410@users.noreply.github.com";
+const releaseAuditRef = process.env.MYNAS_RELEASE_AUDIT_REF ?? "HEAD";
 
 const trackedOutput = requireSuccess(
   await command(["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard"], {}),
@@ -62,7 +63,7 @@ for (const pattern of forbiddenContent) {
 }
 
 const identities = requireSuccess(
-  await command(["git", "log", "HEAD", "--format=%an%x00%ae"], {}),
+  await command(["git", "log", releaseAuditRef, "--format=%an%x00%ae"], {}),
   "release ancestry identity inventory",
 )
   .split("\n")

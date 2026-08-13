@@ -135,7 +135,12 @@ describe("distribution packaging", () => {
       resolve(repositoryRoot, "tests/packaging/release-audit.ts"),
       "utf8",
     );
-    expect(source).toContain('["git", "log", "HEAD", "--format=%an%x00%ae"]');
+    const ci = await readFile(resolve(repositoryRoot, ".github/workflows/ci.yml"), "utf8");
+    expect(ci).toContain(
+      "MYNAS_RELEASE_AUDIT_REF: $" + "{{ github.event.pull_request.head.sha || github.sha }}",
+    );
+    expect(source).toContain('process.env.MYNAS_RELEASE_AUDIT_REF ?? "HEAD"');
+    expect(source).toContain('["git", "log", releaseAuditRef, "--format=%an%x00%ae"]');
     expect(source).toContain('["git", "log", "--all", "-p"');
   });
 
