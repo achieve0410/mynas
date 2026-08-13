@@ -1,4 +1,5 @@
-import { mkdir, readFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { expect, test } from "@playwright/test";
 import { z } from "zod";
 
@@ -61,6 +62,74 @@ test("files workflow browses folders and restores a downloadable version", async
   const downloadPath = `${artifactDirectory}/restored-file.txt`;
   await downloaded.saveAs(downloadPath);
   expect(await readFile(downloadPath, "utf8")).toBe("original recoverable bytes");
+
+  await page.getByRole("button", { name: "documents", exact: true }).click();
+  const batchUploads: number[] = [];
+  const filesUploaded = new Promise<void>((resolve) => {
+    const record = (response: import("@playwright/test").Response): void => {
+      if (
+        response.request().method() === "PUT" &&
+        new URL(response.url()).pathname.startsWith("/api/v1/files/photos/documents/")
+      ) {
+        batchUploads.push(response.status());
+        if (batchUploads.length === 2) {
+          page.off("response", record);
+          resolve();
+        }
+      }
+    };
+    page.on("response", record);
+  });
+  await page.getByTestId("file-upload").setInputFiles([
+    { buffer: Buffer.from("alpha"), mimeType: "text/plain", name: "alpha.txt" },
+    { buffer: Buffer.from("beta"), mimeType: "text/plain", name: "beta.txt" },
+  ]);
+  await page.getByRole("button", { name: "Upload 2 protected items" }).click();
+  await filesUploaded;
+  expect(batchUploads).toEqual([201, 201]);
+  await expect(page.getByRole("button", { name: "alpha.txt" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "beta.txt" })).toBeVisible();
+
+  const uploadFolder = join(artifactDirectory, "folder-source");
+  await mkdir(join(uploadFolder, "nested"), { recursive: true });
+  await writeFile(join(uploadFolder, "nested", "kept.txt"), "directory bytes");
+  await writeFile(join(uploadFolder, "too-large.bin"), Buffer.alloc(64 * 1_024 * 1_024 + 1));
+  const directoryStatuses: number[] = [];
+  const directoryUploaded = new Promise<void>((resolve) => {
+    const record = (response: import("@playwright/test").Response): void => {
+      if (
+        response.request().method() === "PUT" &&
+        decodeURIComponent(new URL(response.url()).pathname).includes("/documents/folder-source/")
+      ) {
+        directoryStatuses.push(response.status());
+        if (directoryStatuses.length === 2) {
+          page.off("response", record);
+          resolve();
+        }
+      }
+    };
+    page.on("response", record);
+  });
+  await page.getByTestId("file-directory-upload").setInputFiles(uploadFolder);
+  await page.getByRole("button", { name: "Upload 2 protected items" }).click();
+  await directoryUploaded;
+  expect(directoryStatuses.toSorted()).toEqual([201, 413]);
+  await expect(page.getByText("1 of 2 files uploaded.")).toBeVisible();
+  await expect(page.getByText("documents/folder-source/too-large.bin")).toBeVisible();
+  await expect(page.getByRole("button", { name: "folder-source" })).toBeVisible();
+
+  await page.getByLabel("Select folder-source").check();
+  await page.getByLabel("Select alpha.txt").check();
+  const archiveStarted = page.waitForEvent("download");
+  const archiveResponse = page.waitForResponse(
+    (response) =>
+      response.request().method() === "POST" &&
+      new URL(response.url()).pathname === "/api/v1/volumes/photos/archive",
+  );
+  await page.getByRole("button", { name: "Download selected" }).click();
+  expect((await archiveResponse).status()).toBe(200);
+  const archive = await archiveStarted;
+  expect(archive.suggestedFilename()).toBe("mynas-files.zip");
 
   await page.screenshot({
     fullPage: true,

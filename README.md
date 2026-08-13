@@ -1,6 +1,6 @@
 # MyNAS
 
-MyNAS v0.2.0 is a macOS-first, localhost-first NAS service with mirrored storage,
+MyNAS v0.3.0 is a macOS-first, localhost-first NAS service with mirrored storage,
 integrity repair, S3-compatible backends, and a private photo library. It ships
 as a strict TypeScript/Bun service, CLI, responsive web dashboard, Docker image,
 Compose stack, and single-replica Kubernetes manifest.
@@ -447,10 +447,14 @@ data.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) before opening a change.
 
-## Known limitations in v0.2.0
+## Known limitations in v0.3.0
 
 - Mirrors have exactly two members; there is no parity or multi-member RAID.
-- Photo ingestion is JPEG-only.
+- Photo ingestion accepts JPEG, PNG, and HEIC originals and derives WebP previews.
+- File and photo pickers support multiple items and Chrome-family directory selection with relative
+  paths preserved; empty directories are not represented by the browser picker.
+- Batch uploads keep successful items and report only failed item paths. Selected files, folders,
+  and photos download as path-preserving ZIP archives.
 - File uploads are limited to 64 MiB and photo uploads to 25 MiB.
 - Maintenance is serialized and scheduled, but has no external alert delivery.
 - S3 buckets and local backend directories must already exist.
@@ -462,7 +466,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) before opening a change.
 
 ## Release and support
 
-- [v0.2.0 release candidate and v0.1.0 history](RELEASE_NOTES.md)
+- [v0.3.0 release notes and earlier history](RELEASE_NOTES.md)
 - [Security policy](SECURITY.md)
 - [Code of Conduct](CODE_OF_CONDUCT.md)
 - [Contribution guide](CONTRIBUTING.md)

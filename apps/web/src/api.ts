@@ -111,6 +111,23 @@ export const api = {
   download: async (path: string): Promise<Blob> => (await request(path)).blob(),
   downloadFile: async (volumeId: string, key: string): Promise<Blob> =>
     (await request(`/api/v1/files/${encodeURIComponent(volumeId)}/${encodePath(key)}`)).blob(),
+  downloadFileArchive: async (
+    volumeId: string,
+    selections: readonly { readonly kind: "file" | "folder"; readonly path: string }[],
+  ): Promise<Blob> =>
+    (
+      await request(`/api/v1/volumes/${encodeURIComponent(volumeId)}/archive`, {
+        body: JSON.stringify({ selections }),
+        method: "POST",
+      })
+    ).blob(),
+  downloadPhotoArchive: async (photoIds: readonly string[]): Promise<Blob> =>
+    (
+      await request("/api/v1/photos/archive", {
+        body: JSON.stringify({ photoIds }),
+        method: "POST",
+      })
+    ).blob(),
   getSetupStatus: () => json("/api/v1/setup/status", setupStatusSchema),
   getHealth: () => json("/api/v1/health", healthSchema),
   getMaintenance: () => json("/api/v1/maintenance", maintenanceSnapshotSchema),
@@ -178,12 +195,12 @@ export const api = {
       body: contents,
       method: "PUT",
     }),
-  uploadPhoto: async (file: File) => {
+  uploadPhoto: async (file: File, relativePath = file.name) => {
     const response = await request("/api/v1/photos", {
       body: file,
       headers: {
         "content-type": file.type || "application/octet-stream",
-        "x-mynas-filename": encodeURIComponent(file.name),
+        "x-mynas-filename": encodeURIComponent(relativePath),
       },
       method: "POST",
     });

@@ -10,6 +10,7 @@ import { MirrorError } from "../../../packages/storage/src/mirror";
 import type { BackendConfig } from "../../../packages/storage/src/registry";
 
 import type { AppInstance, AppServices } from "./types";
+import { createZip } from "./zip";
 
 const backendSchema = z.discriminatedUnion("kind", [
   z.object({
@@ -38,6 +39,18 @@ const volumeSchema = z.object({
 const restoreSchema = z.object({
   path: z.string().min(1),
   versionId: z.string().uuid(),
+});
+
+const archiveSchema = z.object({
+  selections: z
+    .array(
+      z.object({
+        kind: z.enum(["file", "folder"]),
+        path: z.string().min(1),
+      }),
+    )
+    .min(1)
+    .max(100),
 });
 
 const fileListQuerySchema = z.object({
@@ -141,6 +154,38 @@ export const registerStorageRoutes = (app: AppInstance, services: AppServices): 
     return context.json({
       ...listing,
       nextCursor: encodeFileCursor(listing.nextCursor),
+    });
+  });
+
+  app.post("/api/v1/volumes/:volume/archive", async (context) => {
+    const { selections } = archiveSchema.parse(await context.req.json());
+    const volumeId = context.req.param("volume");
+    const volume = await services.registry.getVolume(volumeId);
+    const catalog = services.registry.getCatalog(volumeId);
+    const currentPaths = catalog.listCurrentPaths();
+    const selectedPaths = [
+      ...new Set(
+        selections.flatMap((selection) =>
+          selection.kind === "file"
+            ? [selection.path]
+            : currentPaths.filter((path) => path.startsWith(`${selection.path}/`)),
+        ),
+      ),
+    ].sort();
+    if (selectedPaths.length === 0) {
+      throw new CatalogError("not_found", "no files matched the archive selection");
+    }
+    const entries = await Promise.all(
+      selectedPaths.map(async (path) => ({ contents: await volume.get(path), path })),
+    );
+    const archive = createZip(entries);
+    return new Response(exactArrayBuffer(archive), {
+      headers: {
+        "cache-control": "no-store",
+        "content-disposition": 'attachment; filename="mynas-files.zip"',
+        "content-length": String(archive.byteLength),
+        "content-type": "application/zip",
+      },
     });
   });
 

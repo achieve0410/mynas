@@ -40,6 +40,27 @@ const listingSchema = z.object({
   prefix: z.string(),
 });
 
+const unzipStoredEntries = (archive: Uint8Array): ReadonlyMap<string, string> => {
+  const entries = new Map<string, string>();
+  const view = new DataView(archive.buffer, archive.byteOffset, archive.byteLength);
+  const decoder = new TextDecoder();
+  let offset = 0;
+  while (view.getUint32(offset, true) === 0x04034b50) {
+    const compressedSize = view.getUint32(offset + 18, true);
+    const filenameLength = view.getUint16(offset + 26, true);
+    const extraLength = view.getUint16(offset + 28, true);
+    const filenameStart = offset + 30;
+    const contentsStart = filenameStart + filenameLength + extraLength;
+    const filename = decoder.decode(archive.slice(filenameStart, filenameStart + filenameLength));
+    entries.set(
+      filename,
+      decoder.decode(archive.slice(contentsStart, contentsStart + compressedSize)),
+    );
+    offset = contentsStart + compressedSize;
+  }
+  return entries;
+};
+
 describe("file browsing and recovery API", () => {
   let app: ReturnType<typeof createApp>;
   let database: Database;
@@ -227,6 +248,33 @@ describe("file browsing and recovery API", () => {
       headers: authorized(),
     });
     expect(await download.text()).toBe("original bytes");
+  });
+
+  test("downloads selected files and directories as a path-preserving ZIP", async () => {
+    await put("documents/guides/start.txt", "guide");
+    await put("documents/notes.txt", "notes");
+    await put("other/ignored.txt", "ignored");
+
+    const response = await app.request("/api/v1/volumes/photos/archive", {
+      body: JSON.stringify({
+        selections: [
+          { kind: "folder", path: "documents/guides" },
+          { kind: "file", path: "documents/notes.txt" },
+        ],
+      }),
+      headers: { ...authorized(), "content-type": "application/json" },
+      method: "POST",
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toBe("application/zip");
+    expect(response.headers.get("content-disposition")).toContain("mynas-files.zip");
+    expect(unzipStoredEntries(new Uint8Array(await response.arrayBuffer()))).toEqual(
+      new Map([
+        ["documents/guides/start.txt", "guide"],
+        ["documents/notes.txt", "notes"],
+      ]),
+    );
   });
 
   test("refuses to restore an unreadable historical blob", async () => {

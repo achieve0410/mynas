@@ -148,7 +148,7 @@ describe("owner authentication API", () => {
       headers: { authorization: `Bearer ${apiToken.token}` },
     });
     expect(status.status).toBe(200);
-    expect(await status.json()).toMatchObject({ setupComplete: true, version: "0.2.0" });
+    expect(await status.json()).toMatchObject({ setupComplete: true, version: "0.3.0" });
 
     const revoked = await app.request(`/api/v1/tokens/${apiToken.id}`, {
       headers: { authorization: `Bearer ${session.token}` },

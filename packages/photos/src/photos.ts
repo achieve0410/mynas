@@ -1,4 +1,6 @@
 import type { Database } from "bun:sqlite";
+import decodeHeic from "heic-decode";
+import type { Sharp } from "sharp";
 import sharp from "sharp";
 
 import type { MirrorVolume } from "../../storage/src/mirror";
@@ -6,6 +8,7 @@ import {
   type Album,
   type IngestPhotoInput,
   PhotoError,
+  type PhotoFormat,
   type PhotoIngestResult,
   type PhotoJob,
   type PhotoRecord,
@@ -17,6 +20,7 @@ export {
   type IngestPhotoInput,
   PhotoError,
   type PhotoErrorCode,
+  type PhotoFormat,
   type PhotoIngestResult,
   type PhotoJob,
   type PhotoJobStatus,
@@ -81,24 +85,30 @@ export class PhotoService {
     }
 
     const image = sharp(input.contents, { failOn: "error" });
-    let metadata: Awaited<ReturnType<typeof image.metadata>>;
+    let format: PhotoFormat;
+    let height: number;
     let preview: Uint8Array;
+    let width: number;
     try {
-      metadata = await image.metadata();
-      if (
-        metadata.format !== "jpeg" ||
-        metadata.width === undefined ||
-        metadata.height === undefined
-      ) {
+      const metadata = await image.metadata();
+      if (metadata.width === undefined || metadata.height === undefined) {
         throw new PhotoError("invalid_image", "unsupported or invalid image");
       }
-      preview = new Uint8Array(
-        await image
-          .rotate()
-          .resize({ fit: "inside", height: 1280, width: 1280, withoutEnlargement: true })
-          .webp({ quality: 82 })
-          .toBuffer(),
-      );
+      format = photoFormat(metadata.format);
+      if (format === "heic") {
+        const decoded = await decodeHeic({ buffer: input.contents });
+        width = decoded.width;
+        height = decoded.height;
+        preview = await previewFrom(
+          sharp(decoded.data, {
+            raw: { channels: 4, height: decoded.height, width: decoded.width },
+          }),
+        );
+      } else {
+        width = metadata.width;
+        height = metadata.height;
+        preview = await previewFrom(image);
+      }
     } catch {
       throw new PhotoError("invalid_image", "unsupported or invalid image");
     }
@@ -108,13 +118,13 @@ export class PhotoService {
       capturedAt: importedAt,
       checksum: digest,
       filename: input.filename,
-      format: "jpeg",
-      height: metadata.height,
+      format,
+      height,
       id: crypto.randomUUID(),
       importedAt,
-      originalPath: `photos/originals/${digest}.jpg`,
+      originalPath: `photos/originals/${digest}.${extensionFor(format)}`,
       previewPath: `photos/previews/${digest}.webp`,
-      width: metadata.width,
+      width,
     };
     await this.volume.put(photo.originalPath, input.contents);
     await this.volume.put(photo.previewPath, preview);
@@ -141,3 +151,25 @@ export class PhotoService {
 
 const checksum = (contents: Uint8Array): string =>
   new Bun.CryptoHasher("sha256").update(contents).digest("hex");
+
+const extensionFor = (format: PhotoFormat): string =>
+  format === "jpeg" ? "jpg" : format === "heic" ? "heic" : "png";
+
+const photoFormat = (format: string | undefined): PhotoFormat => {
+  if (format === "jpeg" || format === "png") {
+    return format;
+  }
+  if (format === "heif") {
+    return "heic";
+  }
+  throw new PhotoError("invalid_image", "unsupported or invalid image");
+};
+
+const previewFrom = async (image: Sharp): Promise<Uint8Array> =>
+  new Uint8Array(
+    await image
+      .rotate()
+      .resize({ fit: "inside", height: 1280, width: 1280, withoutEnlargement: true })
+      .webp({ quality: 82 })
+      .toBuffer(),
+  );

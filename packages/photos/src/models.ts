@@ -1,10 +1,11 @@
 export type PhotoJobStatus = "completed" | "failed" | "processing" | "queued";
+export type PhotoFormat = "heic" | "jpeg" | "png";
 
 export type PhotoRecord = {
   readonly capturedAt: string;
   readonly checksum: string;
   readonly filename: string;
-  readonly format: "jpeg";
+  readonly format: PhotoFormat;
   readonly height: number;
   readonly id: string;
   readonly importedAt: string;

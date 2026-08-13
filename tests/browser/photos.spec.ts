@@ -1,8 +1,9 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { expect, test } from "@playwright/test";
 import sharp from "sharp";
 
-import { syntheticJpeg, syntheticJpegSha256 } from "../fixtures/synthetic-photo";
+import { syntheticHeic, syntheticJpeg, syntheticJpegSha256 } from "../fixtures/synthetic-photo";
 import {
   ingestSchema,
   prepareOwnerAndMirror,
@@ -38,6 +39,7 @@ test("photo flagship completes the real browser journey", async ({ browser, page
     mimeType: "image/jpeg",
     name: syntheticJpegFilename,
   });
+  await page.getByRole("button", { name: "Upload 1" }).click();
   const uploadResponse = await uploadCompleted;
   expect(uploadResponse.status()).toBe(201);
   const ingest = ingestSchema.parse(await uploadResponse.json());
@@ -58,6 +60,7 @@ test("photo flagship completes the real browser journey", async ({ browser, page
     mimeType: "image/jpeg",
     name: portraitFilename,
   });
+  await page.getByRole("button", { name: "Upload 1" }).click();
   const portraitResponse = await portraitUploadCompleted;
   expect(portraitResponse.status()).toBe(201);
   const portraitIngest = ingestSchema.parse(await portraitResponse.json());
@@ -87,6 +90,46 @@ test("photo flagship completes the real browser journey", async ({ browser, page
   await expect(page.getByTestId(`album-photo-${ingest.photo.id}`)).toBeVisible();
   await page.getByTestId("nav-photos").click();
   await expect(photo).toBeVisible();
+
+  const uploadFolder = join(dataDirectory, "사진-묶음");
+  await mkdir(join(uploadFolder, "중첩"), { recursive: true });
+  await writeFile(join(uploadFolder, "중첩", "iphone.heic"), syntheticHeic());
+  await writeFile(join(uploadFolder, "unsupported.txt"), "not an image");
+  const batchStatuses: number[] = [];
+  const directoryUploadCompleted = new Promise<void>((resolve) => {
+    const record = (response: import("@playwright/test").Response): void => {
+      if (
+        response.request().method() === "POST" &&
+        new URL(response.url()).pathname === "/api/v1/photos"
+      ) {
+        batchStatuses.push(response.status());
+        if (batchStatuses.length === 2) {
+          page.off("response", record);
+          resolve();
+        }
+      }
+    };
+    page.on("response", record);
+  });
+  await page.getByTestId("photo-directory-upload").setInputFiles(uploadFolder);
+  await page.getByRole("button", { name: "Upload 2" }).click();
+  await directoryUploadCompleted;
+  expect(batchStatuses.toSorted()).toEqual([201, 400]);
+  await expect(page.getByText("1 of 2 photos uploaded.")).toBeVisible();
+  await expect(page.getByText("사진-묶음/unsupported.txt")).toBeVisible();
+  await expect(page.getByAltText("사진-묶음/중첩/iphone.heic")).toBeVisible();
+
+  await page.getByTestId(`photo-select-${ingest.photo.id}`).check();
+  const archiveDownloadStarted = page.waitForEvent("download");
+  const archiveResponse = page.waitForResponse(
+    (response) =>
+      response.request().method() === "POST" &&
+      new URL(response.url()).pathname === "/api/v1/photos/archive",
+  );
+  await page.getByRole("button", { name: "Download selected" }).click();
+  expect((await archiveResponse).status()).toBe(200);
+  const archiveDownload = await archiveDownloadStarted;
+  expect(archiveDownload.suggestedFilename()).toBe("mynas-photos.zip");
 
   await mkdir(ARTIFACT_DIR, { recursive: true });
   await page.screenshot({ fullPage: true, path: `${ARTIFACT_DIR}/timeline-desktop.png` });

@@ -3,6 +3,7 @@ import type { Database } from "bun:sqlite";
 import {
   type Album,
   PhotoError,
+  type PhotoFormat,
   type PhotoJob,
   type PhotoJobStatus,
   type PhotoRecord,
@@ -12,7 +13,7 @@ type PhotoRow = {
   readonly captured_at: string;
   readonly checksum: string;
   readonly filename: string;
-  readonly format: "jpeg";
+  readonly format: PhotoFormat;
   readonly height: number;
   readonly id: string;
   readonly imported_at: string;

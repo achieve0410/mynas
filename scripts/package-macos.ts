@@ -42,6 +42,8 @@ await run([
   "--external",
   "sharp",
   "--external",
+  "heic-decode",
+  "--external",
   "pino",
   "apps/cli/src/main.ts",
   "--outfile",

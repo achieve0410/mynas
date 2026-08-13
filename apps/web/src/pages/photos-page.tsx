@@ -1,10 +1,11 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, ImagePlus, Images, Plus, Upload } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Check, Download, ImagePlus, Images, Plus } from "lucide-react";
 import { useCallback, useMemo, useRef, useState } from "react";
 
 import { api } from "../api";
 import { AlbumDialog } from "../components/album-dialog";
 import { PhotoLightbox } from "../components/photo-lightbox";
+import { PhotoTransferControls } from "../components/photo-transfer-controls";
 import { ProtectedImage } from "../components/protected-image";
 import { useVolumeHealth } from "../hooks/use-volume-health";
 import type { Photo } from "../schemas";
@@ -42,13 +43,7 @@ export const PhotosPage = () => {
   const albumTrigger = useRef<HTMLButtonElement>(null);
   const lightboxTrigger = useRef<HTMLElement | null>(null);
 
-  const upload = useMutation({
-    mutationFn: api.uploadPhoto,
-    onSuccess: async ({ photo }) => {
-      await queryClient.invalidateQueries({ queryKey: ["photos"] });
-      setAnnouncement(`${photo.filename} is protected and ready.`);
-    },
-  });
+  const [pendingDownload, setPendingDownload] = useState(false);
   const closeLightbox = useCallback(() => {
     setLightboxPhoto(null);
     lightboxTrigger.current?.focus();
@@ -93,31 +88,38 @@ export const PhotosPage = () => {
           >
             <Plus size={16} /> Album
           </button>
-          <label
-            className={`button primary upload-button ${
-              writeAvailability.canWrite ? "" : "disabled-control"
-            }`}
-            title={writeAvailability.canWrite ? undefined : writeAvailability.reason}
+          <button
+            className="button secondary"
+            disabled={selected.size === 0 || pendingDownload}
+            onClick={async () => {
+              setPendingDownload(true);
+              try {
+                const archive = await api.downloadPhotoArchive([...selected]);
+                const url = URL.createObjectURL(archive);
+                const link = document.createElement("a");
+                link.href = url;
+                link.download = "mynas-photos.zip";
+                link.click();
+                URL.revokeObjectURL(url);
+              } finally {
+                setPendingDownload(false);
+              }
+            }}
+            type="button"
           >
-            <Upload size={16} />
-            {upload.isPending ? "Protecting..." : "Upload photo"}
-            <input
-              accept="image/jpeg"
-              data-testid="photo-upload"
-              disabled={upload.isPending || !writeAvailability.canWrite}
-              onChange={(event) => {
-                const file = event.target.files?.item(0);
-                if (file !== null && file !== undefined) {
-                  upload.mutate(file);
-                }
-                event.target.value = "";
-              }}
-              type="file"
-            />
-          </label>
+            <Download size={16} /> Download selected
+          </button>
         </div>
       </header>
 
+      <PhotoTransferControls
+        canWrite={writeAvailability.canWrite}
+        onUploaded={async () => {
+          await queryClient.invalidateQueries({ queryKey: ["photos"] });
+          setAnnouncement("Photo upload complete.");
+        }}
+        reason={writeAvailability.reason}
+      />
       <p aria-live="polite" className="sr-only">
         {announcement}
       </p>
@@ -130,12 +132,6 @@ export const PhotosPage = () => {
           </div>
         </section>
       )}
-      {upload.isError ? (
-        <p aria-live="polite" className="form-error">
-          Upload failed: {upload.error.message}
-        </p>
-      ) : null}
-
       {photos.isPending ? (
         <section aria-busy="true" className="loading-state">
           <span className="image-skeleton" />
@@ -205,7 +201,7 @@ export const PhotosPage = () => {
         <section className="empty-state">
           <Images size={30} />
           <h2>Your timeline is ready</h2>
-          <p>Upload a JPEG to create a mirrored original and a lightweight WebP preview.</p>
+          <p>Upload JPEG, PNG, or HEIC originals to create lightweight WebP previews.</p>
         </section>
       )}
 

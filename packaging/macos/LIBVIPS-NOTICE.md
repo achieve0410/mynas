@@ -16,6 +16,11 @@ can be replaced in that package path with a compatible user-modified build.
 The included package README lists the other linked libraries, their licenses,
 and their source/license URLs.
 
+The bundle also includes `heic-decode` (ISC) and its separate
+`libheif-js` runtime package (LGPL-3.0) for HEIC decoding. The unmodified
+runtime can be replaced under `node_modules/libheif-js`; source is available
+at <https://github.com/catdad-experiments/libheif-js>.
+
 The full GNU LGPL version 3 and incorporated GNU GPL version 3 terms accompany
 the runtime as `LGPL-3.0.txt` and `GPL-3.0.txt`. Those files govern libvips;
 they do not change MyNAS's Apache-2.0 license.

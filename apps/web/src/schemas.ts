@@ -74,7 +74,7 @@ export const photoSchema = z.object({
   capturedAt: z.string(),
   checksum: z.string().length(64),
   filename: z.string(),
-  format: z.literal("jpeg"),
+  format: z.enum(["heic", "jpeg", "png"]),
   height: z.number().int().positive(),
   id: z.string().uuid(),
   importedAt: z.string(),
