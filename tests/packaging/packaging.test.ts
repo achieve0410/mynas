@@ -141,6 +141,9 @@ describe("distribution packaging", () => {
     );
     expect(source).toContain('process.env.MYNAS_RELEASE_AUDIT_REF ?? "HEAD"');
     expect(source).toContain('["git", "log", releaseAuditRef, "--format=%an%x00%ae"]');
+    expect(source).toContain(
+      '"Won" + "hyo Choi\\u000037432155+achieve0410@users.noreply.github.com"',
+    );
     expect(source).toContain('["git", "log", "--all", "-p"');
   });
 

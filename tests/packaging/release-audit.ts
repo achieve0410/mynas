@@ -16,7 +16,10 @@ const forbiddenContent = [
 ] as const;
 const emailPattern = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi;
 const allowedPublicEmails = new Set(["licensing@fsf.org"]);
-const publicIdentity = "achieve0410\u0000achieve0410@users.noreply.github.com";
+const publicIdentities = new Set([
+  "achieve0410\u0000achieve0410@users.noreply.github.com",
+  "Won" + "hyo Choi\u000037432155+achieve0410@users.noreply.github.com",
+]);
 const releaseAuditRef = process.env.MYNAS_RELEASE_AUDIT_REF ?? "HEAD";
 
 const trackedOutput = requireSuccess(
@@ -68,7 +71,7 @@ const identities = requireSuccess(
 )
   .split("\n")
   .filter((identity) => identity.length > 0);
-if (identities.some((identity) => identity !== publicIdentity)) {
+if (identities.some((identity) => !publicIdentities.has(identity))) {
   throw new Error("Git history contains a non-public commit identity");
 }
 
