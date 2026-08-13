@@ -122,6 +122,19 @@ export class FileCatalog {
     return listCurrentFiles(this.database, this.volumeId, prefix, limit, cursor);
   }
 
+  public listCurrentPaths(): readonly string[] {
+    return this.database
+      .query<{ readonly path: string }, [string]>(
+        `SELECT v.path
+         FROM files AS f
+         JOIN file_versions AS v ON v.id = f.current_version_id
+         WHERE f.volume_id = ? AND v.tombstone = 0
+         ORDER BY v.path`,
+      )
+      .all(this.volumeId)
+      .map(({ path }) => path);
+  }
+
   public listBlobs(): readonly BlobDescriptor[] {
     return this.database
       .query<BlobRow, [string]>(

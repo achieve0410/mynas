@@ -1,12 +1,12 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Database, ShieldCheck } from "lucide-react";
+import { Database, Download, ShieldCheck } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { api } from "../api";
 import { FileBrowser } from "../components/file-browser";
 import { FileTransferWorkbench } from "../components/file-transfer-workbench";
 import { FileVersionPanel } from "../components/file-version-panel";
-import type { FileListing } from "../schemas";
+import type { FileListEntry, FileListing } from "../schemas";
 
 export const FilesPage = () => {
   const queryClient = useQueryClient();
@@ -16,6 +16,7 @@ export const FilesPage = () => {
   const [keyValue, setKeyValue] = useState("");
   const [pendingDownload, setPendingDownload] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [selections, setSelections] = useState<readonly FileListEntry[]>([]);
 
   const volumes = useQuery({
     queryFn: api.listVolumes,
@@ -72,6 +73,7 @@ export const FilesPage = () => {
     setPrefix("");
     setSelectedPath(null);
     setKeyValue("");
+    setSelections([]);
     setMessage(null);
   };
 
@@ -79,6 +81,7 @@ export const FilesPage = () => {
     setPrefix(nextPrefix);
     setSelectedPath(null);
     setKeyValue(nextPrefix);
+    setSelections([]);
     setMessage(null);
   };
 
@@ -108,6 +111,26 @@ export const FilesPage = () => {
     }
   };
 
+  const downloadArchive = async (): Promise<void> => {
+    setPendingDownload(true);
+    try {
+      const archive = await api.downloadFileArchive(
+        volumeId,
+        selections.map(({ kind, path }) => ({ kind, path })),
+      );
+      const url = URL.createObjectURL(archive);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "mynas-files.zip";
+      document.body.append(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } finally {
+      setPendingDownload(false);
+    }
+  };
+
   return (
     <div className="page">
       <header className="page-heading">
@@ -116,9 +139,21 @@ export const FilesPage = () => {
           <h1>Files</h1>
           <p>Browse cataloged objects, inspect immutable versions, and recover protected bytes.</p>
         </div>
-        <span className="action-icon large">
-          <ShieldCheck aria-hidden="true" size={24} />
-        </span>
+        <div className="button-row">
+          <button
+            className="button secondary"
+            disabled={selections.length === 0 || pendingDownload}
+            onClick={() => {
+              void downloadArchive();
+            }}
+            type="button"
+          >
+            <Download aria-hidden="true" size={16} /> Download selected
+          </button>
+          <span className="action-icon large">
+            <ShieldCheck aria-hidden="true" size={24} />
+          </span>
+        </div>
       </header>
 
       <section className="file-volume-bar">
@@ -172,8 +207,10 @@ export const FilesPage = () => {
           onRetry={() => {
             void listing.refetch();
           }}
+          onSelectionChange={setSelections}
           prefix={prefix}
           selectedPath={selectedPath}
+          selections={selections}
         />
         <FileVersionPanel
           currentVersionId={selectedEntry?.kind === "file" ? selectedEntry.versionId : null}

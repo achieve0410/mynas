@@ -32,7 +32,7 @@ describe("mynas CLI", () => {
     );
 
     expect(exitCode).toBe(0);
-    expect(output).toEqual(["0.2.0\n"]);
+    expect(output).toEqual(["0.3.0\n"]);
   });
 
   test("lists catalog backup and restore commands", async () => {

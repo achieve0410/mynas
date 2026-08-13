@@ -8,6 +8,8 @@ export const macosRuntimePackages = [
   "@img/colour",
   "@img/sharp-darwin-arm64",
   "@img/sharp-libvips-darwin-arm64",
+  "heic-decode",
+  "libheif-js",
   "pino",
   "atomic-sleep",
   "on-exit-leak-free",

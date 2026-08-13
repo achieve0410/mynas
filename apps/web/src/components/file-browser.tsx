@@ -12,8 +12,10 @@ type FileBrowserProps = {
   readonly onFolderSelect: (prefix: string) => void;
   readonly onLoadMore: () => void;
   readonly onRetry: () => void;
+  readonly onSelectionChange: (selections: readonly FileListEntry[]) => void;
   readonly prefix: string;
   readonly selectedPath: string | null;
+  readonly selections: readonly FileListEntry[];
 };
 
 const nameOf = (path: string): string => path.split("/").filter(Boolean).at(-1) ?? path;
@@ -46,8 +48,10 @@ export const FileBrowser = ({
   onFolderSelect,
   onLoadMore,
   onRetry,
+  onSelectionChange,
   prefix,
   selectedPath,
+  selections,
 }: FileBrowserProps) => (
   <section aria-labelledby="file-browser-title" className="section-block file-browser">
     <div className="section-heading compact">
@@ -104,8 +108,27 @@ export const FileBrowser = ({
         <ul className="data-list file-entry-list">
           {entries.map((entry) => {
             const name = nameOf(entry.path);
+            const checked = selections.some(
+              (selection) => selection.kind === entry.kind && selection.path === entry.path,
+            );
             return (
               <li className="data-row file-entry-row" key={`${entry.kind}:${entry.path}`}>
+                <input
+                  aria-label={`Select ${name}`}
+                  checked={checked}
+                  className="file-entry-checkbox"
+                  onChange={() =>
+                    onSelectionChange(
+                      checked
+                        ? selections.filter(
+                            (selection) =>
+                              selection.kind !== entry.kind || selection.path !== entry.path,
+                          )
+                        : [...selections, entry],
+                    )
+                  }
+                  type="checkbox"
+                />
                 <button
                   aria-label={name}
                   className="file-entry-button"

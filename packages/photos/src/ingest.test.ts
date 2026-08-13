@@ -1,7 +1,12 @@
 import { Database } from "bun:sqlite";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import sharp from "sharp";
 
-import { syntheticJpeg, syntheticJpegSha256 } from "../../../tests/fixtures/synthetic-photo";
+import {
+  syntheticHeic,
+  syntheticJpeg,
+  syntheticJpegSha256,
+} from "../../../tests/fixtures/synthetic-photo";
 import { migrate } from "../../database/src/migrations";
 import type {
   BackendHealth,
@@ -92,6 +97,38 @@ describe("PhotoService", () => {
     expect(new TextDecoder().decode((await service.getPreview(result.photo.id)).slice(0, 4))).toBe(
       "RIFF",
     );
+  });
+
+  test("stores PNG and HEIC originals with format-specific metadata", async () => {
+    const png = new Uint8Array(
+      await sharp({
+        create: {
+          background: { alpha: 1, b: 180, g: 120, r: 60 },
+          channels: 4,
+          height: 3,
+          width: 4,
+        },
+      })
+        .png()
+        .toBuffer(),
+    );
+    const fixtures = [
+      { contents: png, filename: "여행/landscape.png", format: "png" },
+      { contents: syntheticHeic(), filename: "여행/iphone.heic", format: "heic" },
+    ] as const;
+
+    for (const fixture of fixtures) {
+      const result = await service.ingest(fixture);
+
+      expect(result.photo).toMatchObject({
+        filename: fixture.filename,
+        format: fixture.format,
+      });
+      expect(await service.getOriginal(result.photo.id)).toEqual(fixture.contents);
+      expect(
+        new TextDecoder().decode((await service.getPreview(result.photo.id)).slice(0, 4)),
+      ).toBe("RIFF");
+    }
   });
 
   test("deduplicates originals and exposes timeline albums", async () => {

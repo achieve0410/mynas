@@ -7,13 +7,13 @@ import { z } from "zod";
 
 import { createApp } from "../../apps/server/src/app";
 import { migrate } from "../../packages/database/src/migrations";
-import { syntheticJpeg, syntheticJpegSha256 } from "../fixtures/synthetic-photo";
+import { syntheticHeic, syntheticJpeg, syntheticJpegSha256 } from "../fixtures/synthetic-photo";
 
 const loginSchema = z.object({ token: z.string().min(32) });
 const photoSchema = z.object({
   checksum: z.string().length(64),
   filename: z.string(),
-  format: z.literal("jpeg"),
+  format: z.enum(["heic", "jpeg", "png"]),
   height: z.number().int().positive(),
   id: z.string().uuid(),
   width: z.number().int().positive(),
@@ -198,5 +198,31 @@ describe("photo API", () => {
       method: "POST",
     });
     expect(oversized.status).toBe(413);
+  });
+
+  test("accepts HEIC with a directory-relative filename and serves its original type", async () => {
+    const uploaded = await app.request("/api/v1/photos", {
+      body: exactArrayBuffer(syntheticHeic()),
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "image/heic",
+        "x-mynas-filename": encodeURIComponent("여행/제주/IMG_0001.HEIC"),
+      },
+      method: "POST",
+    });
+    expect(uploaded.status).toBe(201);
+    const ingest = ingestSchema.parse(await uploaded.json());
+    expect(ingest.photo).toMatchObject({
+      filename: "여행/제주/IMG_0001.HEIC",
+      format: "heic",
+    });
+
+    const original = await app.request(`/api/v1/photos/${ingest.photo.id}/original`, {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(original.headers.get("content-type")).toBe("image/heic");
+    expect(new Uint8Array(await original.arrayBuffer())).toEqual(
+      new Uint8Array(exactArrayBuffer(syntheticHeic())),
+    );
   });
 });

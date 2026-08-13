@@ -1,3 +1,40 @@
+# MyNAS v0.3.0
+
+MyNAS v0.3.0 expands protected transfers across the Files and Photos workspaces
+while preserving the existing local-first, two-replica storage contract.
+
+## Highlights
+
+- JPEG, PNG, and HEIC photo ingestion with byte-verified format detection,
+  content-addressed originals, and WebP previews
+- Multiple-file and Chrome-family directory uploads for Files and Photos with
+  relative paths preserved
+- Per-item upload isolation: successful items remain protected while only
+  failed relative paths are reported for retry
+- Selected file, folder, and photo downloads as UTF-8 path-preserving ZIP
+  archives with zip-slip path rejection
+- Schema v6 migration preserving existing JPEG photo rows and packaged
+  `heic-decode`/`libheif-js` support for Apple Silicon releases
+
+## Verification surfaces
+
+- RED-to-GREEN service/API coverage for PNG and real HEIC decoding, original
+  MIME types, schema migration, archive contents, and unsafe ZIP entry paths
+- Real Chrome journeys for mixed-success directory uploads, retained successes,
+  failed-path reporting, multi-selection, and ZIP downloads
+- Full Biome, strict TypeScript, production web build, 128-test repository
+  suite, macOS package assembly, checksum, runtime-layout, and license audit
+
+## Remaining limitations
+
+- The macOS package remains Apple Silicon-only and is not Apple-notarized
+- Directory selection depends on Chrome-family `webkitdirectory` behavior and
+  cannot represent empty directories
+- Photo processing remains foreground work without sharing, TLS termination,
+  or encryption at rest
+- Product-market fit and willingness to pay remain unproven until external
+  paid-beta users validate them
+
 # MyNAS v0.2.0 release candidate
 
 The v0.2.0 code on `main` is prepared for the first self-contained Apple

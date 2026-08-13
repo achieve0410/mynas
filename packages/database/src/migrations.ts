@@ -1,6 +1,6 @@
 import type { Database } from "bun:sqlite";
 
-export const CURRENT_SCHEMA_VERSION = 5;
+export const CURRENT_SCHEMA_VERSION = 6;
 
 export const migrate = (database: Database): void => {
   database.exec(`
@@ -80,7 +80,7 @@ export const migrate = (database: Database): void => {
       id TEXT PRIMARY KEY,
       checksum TEXT NOT NULL UNIQUE,
       filename TEXT NOT NULL,
-      format TEXT NOT NULL CHECK (format = 'jpeg'),
+      format TEXT NOT NULL CHECK (format IN ('jpeg', 'png', 'heic')),
       width INTEGER NOT NULL CHECK (width > 0),
       height INTEGER NOT NULL CHECK (height > 0),
       captured_at TEXT NOT NULL,
@@ -152,6 +152,40 @@ export const migrate = (database: Database): void => {
     CREATE INDEX IF NOT EXISTS maintenance_runs_kind_time_idx
       ON maintenance_runs (kind, started_at DESC);
   `);
+
+  const photoTableSql = database
+    .query<{ readonly sql: string }, []>(
+      "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'photos'",
+    )
+    .get()?.sql;
+  if (photoTableSql?.includes("CHECK (format = 'jpeg')") === true) {
+    database.exec(`
+      PRAGMA foreign_keys = OFF;
+      BEGIN IMMEDIATE;
+      CREATE TABLE photos_v6 (
+        id TEXT PRIMARY KEY,
+        checksum TEXT NOT NULL UNIQUE,
+        filename TEXT NOT NULL,
+        format TEXT NOT NULL CHECK (format IN ('jpeg', 'png', 'heic')),
+        width INTEGER NOT NULL CHECK (width > 0),
+        height INTEGER NOT NULL CHECK (height > 0),
+        captured_at TEXT NOT NULL,
+        imported_at TEXT NOT NULL,
+        original_path TEXT NOT NULL UNIQUE,
+        preview_path TEXT NOT NULL UNIQUE
+      );
+      INSERT INTO photos_v6
+      SELECT id, checksum, filename, format, width, height, captured_at, imported_at,
+             original_path, preview_path
+      FROM photos;
+      DROP TABLE photos;
+      ALTER TABLE photos_v6 RENAME TO photos;
+      CREATE INDEX photos_timeline_idx
+        ON photos (captured_at DESC, imported_at DESC);
+      COMMIT;
+      PRAGMA foreign_keys = ON;
+    `);
+  }
 
   database
     .query("INSERT OR IGNORE INTO schema_migrations (version, applied_at) VALUES (?, ?)")
