@@ -42,7 +42,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: mynas
-          image: ghcr.io/achieve0410/mynas:0.1.0
+          image: ghcr.io/achieve0410/mynas:0.4.0
           imagePullPolicy: IfNotPresent
           args:
             - --data-dir

@@ -1,4 +1,47 @@
-# MyNAS v0.3.0
+# MyNAS v0.4.0
+
+MyNAS v0.4.0 strengthens recovery truth and operational visibility without
+claiming complete catalog-and-blob backup coverage.
+
+## Highlights
+
+- credential-safe catalog restore requiring a replacement owner password,
+  with old users, browser sessions, and API tokens removed before publication
+- supported v0.3.0 schema-6 catalog staging and migration before restore
+- durable catalog-backup and volume-scrub incidents with restart-safe identity,
+  occurrence tracking, resolution, impact, and remediation
+- authenticated responsive Protection UI with explicit unknown/error state and
+  independent active-incident truth
+- route-independent transfer queues with a three-job bound, progress,
+  cancellation, bounded terminal history, and foreground resume
+- protected photo import review with SHA-256 receipts, EXIF capture/GPS
+  metadata backfill, capture-time ordering, album management, and safe
+  library/album deletion semantics
+- authenticated encrypted snapshot bundles with manifest-last publication,
+  verified CLI download, Keychain-backed agent credentials, retention, and
+  optional Slack workflow notifications
+
+## Verification and compatibility
+
+- Strict Biome and TypeScript checks, production web build, repository tests,
+  and real Chrome journeys cover protection incidents, secure restore, transfer
+  queues, photo workflows, and responsive layouts.
+- macOS package and release audits verify version coupling, runtime contents,
+  licenses, checksums, and private-data exclusion.
+- Existing v0.3.0 catalogs migrate in place through schema 10. Catalog restore
+  accepts the supported v0.3.0 schema-6 staging format and migrates it before
+  replacing owner credentials.
+
+## Remaining recovery limits
+
+- Catalog backups still exclude mirrored blob bytes.
+- Complete general-purpose recovery sets, offsite replication, bounded
+  streaming, and independent delivery of protection-incident alerts remain
+  future work.
+
+---
+
+## MyNAS v0.3.0
 
 MyNAS v0.3.0 expands protected transfers across the Files and Photos workspaces
 while preserving the existing local-first, two-replica storage contract.

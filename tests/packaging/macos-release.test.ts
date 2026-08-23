@@ -13,6 +13,9 @@ describe("macOS release packaging", () => {
     expect(workflow).toContain("bun run qa:macos");
     expect(workflow).toContain("mynas-darwin-arm64.tar.gz.sha256");
     expect(workflow).toContain("gh release create");
+    expect(workflow).toContain("--notes-file");
+    expect(workflow).toContain("git rev-parse origin/main");
+    expect(workflow).toContain("docker manifest inspect");
     expect(workflow).toContain("persist-credentials: false");
     expect(workflow).toContain("GITHUB_REF_NAME");
     expect(workflow).toContain("GH_REPO: $" + "{{ github.repository }}");

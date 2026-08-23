@@ -62,6 +62,7 @@ jobs:
         run: |
           PACKAGE_VERSION=$(bun -e 'const value = await Bun.file("package.json").json(); process.stdout.write(value.version)')
           test "$GITHUB_REF_NAME" = "v$PACKAGE_VERSION"
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
       - run: bun run verify
       - run: bun run test:browser
       - run: bun run qa:release
@@ -82,10 +83,29 @@ jobs:
       contents: write
     runs-on: ubuntu-24.04
     steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: mynas-darwin-arm64
           path: dist
+      - name: Prepare authored release notes
+        run: |
+          awk 'NR == 1 { next } /^---$/ { exit } { print }' RELEASE_NOTES.md \
+            > "$RUNNER_TEMP/release-notes.md"
+          test -s "$RUNNER_TEMP/release-notes.md"
+      - name: Verify matching container image exists
+        run: |
+          VERSION=${GITHUB_REF_NAME#v}
+          for ATTEMPT in $(seq 1 40); do
+            if docker manifest inspect "ghcr.io/${GITHUB_REPOSITORY}:$VERSION" >/dev/null 2>&1; then
+              exit 0
+            fi
+            sleep 15
+          done
+          echo "matching container image was not published" >&2
+          exit 1
       - name: Create immutable tagged GitHub release
         env:
           GH_REPO: ${{ github.repository }}
@@ -94,5 +114,5 @@ jobs:
           gh release create "$GITHUB_REF_NAME" \
             dist/mynas-darwin-arm64.tar.gz \
             dist/mynas-darwin-arm64.tar.gz.sha256 \
-            --generate-notes \
+            --notes-file "$RUNNER_TEMP/release-notes.md" \
             --verify-tag

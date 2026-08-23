@@ -1,6 +1,6 @@
 # MyNAS Design System
 
-Status: direction lock for v0.1
+Status: current product and interface contract for v0.4
 Product posture: calm, local-first infrastructure with a first-class photo library
 
 ## 1. Product Direction
@@ -57,12 +57,13 @@ Desktop navigation:
 3. Files
 4. Photos
 5. Albums
-6. Activity
-7. Guide
-8. Settings
+6. Protection
+7. Activity
+8. Guide
+9. Settings
 
 Mobile navigation exposes Overview, Files, Photos, and More. More opens a sheet containing
-Storage, Albums, Activity, Guide, Settings, and sign-out.
+Storage, Albums, Protection, Activity, Guide, Settings, and sign-out.
 
 Routes:
 
@@ -74,6 +75,7 @@ Routes:
 | `/files` | Browse folders and find, transfer, or recover protected files | Folder browser |
 | `/photos` | Find and browse the protected photo library | Adjustable timeline grid |
 | `/albums` | Browse collections created from photo selection | Album list |
+| `/protection` | Review durable backup and scrub incidents with remediation | Incident ledger |
 | `/activity` | Review recent transfer outcomes and failure reasons | Activity timeline |
 | `/guide` | Learn each menu's purpose, setup, and verification steps | Guide topics |
 | `/settings` | API tokens and service information | Settings sections |
@@ -222,14 +224,17 @@ Files and Photos share a compact discovery toolbar directly below the page headi
 
 ### Transfer queue
 
-- Every selected upload becomes one persistent row with filename, size, status, and progress.
-- Status is a typed state: queued, uploading/downloading, complete, or failed.
+- A logical batch exposes aggregate queued/transferring/paused/complete/failed counts. Only active,
+  recently paused, and the newest 20 terminal jobs become detail rows; queued work is not mounted
+  as thousands of DOM nodes.
+- Status is a typed state: queued, uploading/downloading, paused, complete, or failed.
 - Byte progress comes from the active request. When total bytes are unavailable, show
   indeterminate progress and the transferred-byte count instead of a fabricated percentage.
-- Completion remains visible in the current screen until the next transfer begins or the user
-  clears it. Failures keep the object name and safe server message.
+- Aggregate completion remains visible until the user clears it. The newest terminal rows keep the
+  object name and safe server message; older rows remain represented by the batch counts.
 - Download actions expose the same downloading/complete/failed states as uploads.
-- A compact live region announces terminal outcomes; the row remains the visual source of truth.
+- A compact live region announces aggregate progress and terminal outcomes; bounded rows provide
+  active and recent detail.
 
 ### Buttons
 
@@ -254,30 +259,69 @@ Files and Photos share a compact discovery toolbar directly below the page headi
   are Small 88px, Medium 112px, and Large 156px.
 - Native aspect ratio is preserved with `object-fit: cover`.
 - Preview loads first; original is only fetched by explicit download.
+- Mount at most 60 photo tiles initially and append the next 60 near each scroll boundary until
+  every matching photo is reachable in one continuous timeline. Previously revealed tiles remain
+  in document order. Offscreen tiles use layout/paint containment and shared viewport observation.
+  Grid images decode asynchronously; the stored 1280px WebP preview and original bytes are not
+  recompressed.
 - Selection is a visible top-left check control, not a hover-only affordance.
 - Empty timeline shows one upload action and accepted format.
+- The native iOS picker remains system-owned. After it returns Files, MyNAS opens an app-owned
+  review with New, Checking protection, Already protected, Unsupported, and Over 25 MiB states.
+- Successful uploads persist metadata-only local receipts. Receipt matches and filenames already
+  present in the protected library are only hashing candidates; automatic skip requires a
+  worker-computed SHA-256 that the protected server confirms.
+- Review counts include the complete selection while at most 40 item rows are mounted. Confirm
+  uploads only New items; exact protected items are skipped or attached to the current album.
 
 ### Album view
 
 - Album name and photo count are the only persistent header metadata.
 - Creation uses a focused dialog with one name field.
 - Adding a photo confirms in-place; it does not navigate away.
+- Album detail applies the same append-only 60-tile progressive pages as the photo timeline.
 
 ### Lightbox
 
 - Full viewport surface with dimmed canvas.
-- Image uses `object-fit: contain`; metadata appears in a collapsible side panel.
+- Image uses `object-fit: contain`; metadata appears in a collapsible side panel and is closed by
+  default.
 - `Escape` closes, left/right arrows navigate, and focus returns to the originating thumbnail.
-- Previous/next controls disable at collection boundaries; navigation never wraps silently.
-- Zoom out, reset, and zoom in controls expose the exact percentage. Zoom is bounded from 50%
-  to 300% and resets when the active photo changes.
+- Keyboard arrows and horizontal swipe navigate without visible previous/next controls; navigation
+  never wraps silently.
+- Two-pointer pinch zoom is bounded from 50% to 300% and resets when the active photo changes.
+  No separate zoom controls are shown.
 - A horizontal pointer swipe beyond 64px navigates in the swipe direction. Vertical movement,
-  toolbar interaction, and shorter drags do not navigate.
+  toolbar interaction, shorter drags, and active pinch gestures do not navigate.
 - Photo transitions use transform and opacity only. The direction follows the navigation
   direction, and reduced motion removes the translation.
 - Focus is trapped while open.
-- Download original is a labeled button, not an icon-only control.
-- On mobile, metadata becomes a bottom sheet and controls remain clear of safe areas.
+- Save photo is a labeled button, not an icon-only control. On mobile browsers that support sharing
+  image files, it opens the native share sheet so the owner can choose Save Image; browsers cannot
+  silently write into the system photo library. Unsupported browsers fall back to a file download.
+- On mobile, toolbar row one aligns filename plus `width×height (reduced aspect ratio)` opposite
+  Close; row two aligns collection position opposite Save photo. Both right-side actions align to
+  the toolbar's right content edge. The image follows, then the collapsed metadata sheet with
+  imported time, SHA-256, and every album membership.
+
+### Background transfers
+
+- One app-level transfer center survives route changes and presents stable aggregate progress plus
+  bounded active/recent rows everywhere.
+- Upload and individual-download batches run at most three jobs concurrently; remaining jobs stay
+  explicitly queued in the aggregate batch state.
+- A background tab does not cancel work. If the mobile OS suspends networking, affected jobs pause
+  rather than fail and automatically resume when the document is foregrounded or connectivity
+  returns. The web UI never claims bytes continue while iOS has suspended the process.
+- Selected files download individually; each selected folder remains one ZIP job. Selected photos
+  download their protected originals individually.
+- One aggregate batch result is posted after all jobs reach terminal state. Slack upload and
+  download targets are separate threads; totals cover the complete batch while at most 100
+  sanitized representative details put failures first.
+- The newest 20 completed/failed rows remain inspectable until the user clears finished work.
+- Close hides the current transfer-center snapshot without cancelling queued or active work. A new
+  job or a later status/error change makes the center visible again; Clear finished remains the
+  explicit action that removes terminal history.
 
 ### Activity timeline
 
@@ -309,8 +353,10 @@ Files and Photos share a compact discovery toolbar directly below the page headi
 - Download progress is driven by streamed response bytes and terminal response completion.
 - Transfer rows adapt the beui.dev file-upload mechanism: stable rows, explicit status changes,
   transform/opacity feedback, and no animation dependency or decorative loop.
+- Transfer concurrency is three. Hidden/offline network failures enter `paused`; `online` or
+  foreground visibility is the exact resume signal.
 - Lightbox swipe uses pointer capture and a 64px horizontal threshold; the image settles over
-  220ms. Zoom uses 120ms transform feedback.
+  220ms. Pinch zoom uses 120ms transform feedback.
 - Scrub and repair state is driven by explicit operation responses.
 
 ## 8. State Inventory
@@ -338,7 +384,7 @@ Toasts are never the sole carrier of an error or data-loss warning.
 - Dialogs and lightbox restore focus to their triggers.
 - Photos use filename-derived alt text until user-authored descriptions exist.
 - Live regions announce upload completion, repair result, and authentication errors.
-- Search, sort, preview size, refresh, zoom, and navigation controls have persistent labels.
+- Search, sort, preview size, refresh, transfer, and navigation controls have persistent labels.
 - Progress bars expose `aria-valuenow`, `aria-valuemin`, and `aria-valuemax` when determinate.
 - Touch targets are at least 44x44px.
 
@@ -360,7 +406,8 @@ At each viewport:
 - Photo lightbox opens and closes by keyboard.
 - Files and Photos discovery controls wrap without clipping and retain 44px touch targets.
 - Activity rows and Guide topics never require horizontal scrolling.
-- Lightbox zoom and previous/next controls remain reachable above the mobile safe area.
+- Lightbox Close and Download remain reachable above the mobile safe area; pinch zoom does not
+  require a visible control.
 
 ## 11. Implementation Rules
 

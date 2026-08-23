@@ -1,6 +1,6 @@
 # MyNAS
 
-MyNAS v0.3.0 is a macOS-first, localhost-first NAS service with mirrored storage,
+MyNAS v0.4.0 is a macOS-first, localhost-first NAS service with mirrored storage,
 integrity repair, S3-compatible backends, and a private photo library. It ships
 as a strict TypeScript/Bun service, CLI, responsive web dashboard, Docker image,
 Compose stack, and single-replica Kubernetes manifest.
@@ -17,10 +17,14 @@ directories and remain responsible for the underlying filesystems and backups.
 - SHA-256-addressed blobs and versioned file metadata in SQLite
 - Degraded-member detection with write refusal
 - Scrub reports, replica repair, range downloads, and exact-path file versions
-- Scheduled catalog snapshots, mirror scrubs, bounded retention, and a durable
-  maintenance run ledger
-- JPEG ingestion, WebP previews, checksum deduplication, timeline, lightbox,
-  and albums
+- Scheduled catalog snapshots, mirror scrubs, bounded retention, durable run
+  history, and restart-safe protection incidents
+- JPEG, PNG, and HEIC ingestion, EXIF capture metadata, WebP previews,
+  checksum deduplication, protected-import review, lightbox, and managed albums
+- Route-independent bounded transfer queues with progress, cancellation, and
+  resumable foreground workflows
+- Authenticated, encrypted, manifest-last snapshot bundles for advanced backup
+  agents, with verified CLI download and deletion
 - One localhost owner, expiring browser sessions, and revocable API tokens
 - Responsive dashboard with bundled fonts and no external web dependencies
 - Self-contained Apple Silicon runtime bundle, guided local mirror bootstrap,
@@ -268,13 +272,19 @@ versioning or backup policy. A restored catalog cannot recreate missing
 objects.
 
 Restore is offline-only. Stop MyNAS, select a data directory with no existing
-`mynas.sqlite`, `mynas.sqlite-wal`, or `mynas.sqlite-shm`, then restore and
-restart the service:
+`mynas.sqlite`, `mynas.sqlite-wal`, or `mynas.sqlite-shm`, and choose a new
+owner credential. Restore discards every backed-up user, browser session, and
+API token so an older backup cannot reactivate revoked access:
 
 ```sh
-bun run mynas catalog restore \
+read -rsp "New MyNAS owner password: " MYNAS_RESTORE_PASSWORD
+printf '\n'
+printf '%s\n' "$MYNAS_RESTORE_PASSWORD" | bun run mynas catalog restore \
   --data-dir "$HOME/MyNAS/restored-data" \
-  --input "$HOME/MyNAS/backups/mynas-catalog.sqlite"
+  --input "$HOME/MyNAS/backups/mynas-catalog.sqlite" \
+  --password-stdin \
+  --username owner
+unset MYNAS_RESTORE_PASSWORD
 
 bun run mynas serve \
   --data-dir "$HOME/MyNAS/restored-data" \
@@ -283,13 +293,39 @@ bun run mynas serve \
 ```
 
 Restore validates catalog integrity, foreign keys, and schema compatibility
-before atomically installing `mynas.sqlite`. It refuses to replace an existing
-catalog. Keep the original data directory unchanged until the restored service
-and configured storage backends have been verified.
+before replacing the owner credentials and atomically installing
+`mynas.sqlite`. It refuses to replace an existing catalog. Keep the original
+data directory unchanged until the restored service and configured storage
+backends have been verified.
+
+Before upgrading, retain a catalog backup and independent copies of backend
+objects. v0.4.0 migrates supported v0.3.0 catalogs forward through schema 10.
+Downgrades are not supported: an older runtime must not be pointed at a catalog
+already opened by a newer release. MyNAS now refuses a catalog whose schema is
+newer than the running binary before applying any migration.
 
 For Compose or Kubernetes, stop the workload before restore and mount the
 existing metadata volume at the same data path in a one-off MyNAS container.
 Do not delete the Compose volume or persistent volume during recovery.
+
+### Advanced encrypted snapshot bundles
+
+The authenticated snapshot-bundle API and `mynas snapshot list`, `download`,
+and `delete` commands support manifest-last encrypted backup producers. A
+bundle becomes visible only after every declared chunk, canonical manifest,
+and signature have been stored and validated.
+
+The macOS archive also contains `slack-snapshot-agent`, a specialized reference
+producer for a companion Slack Dashboard deployment. It is disabled until an
+operator provisions its Keychain entries and explicitly installs its launchd
+schedule. The agent can stop and restart the configured companion services,
+read the explicitly configured database and artifact roots, access a selected
+Docker context, and restore a Tailscale Serve route. Its encrypted snapshot
+chunks can contain database dumps, environment files, TLS material, and other
+secrets, so use a dedicated mirror, restrict the API token, protect the
+Keychain and signing keys, and perform restores only into an isolated
+destination. This reference producer is not required for normal MyNAS file,
+photo, catalog-backup, or protection-incident operation.
 
 ## Storage backends
 
@@ -415,10 +451,11 @@ without an Ingress or TLS policy.
 
 ## Photos
 
-Create a healthy mirror with the exact ID `photos` before uploading. v0.2.0
-accepts JPEG originals, records dimensions and import time, generates WebP
-previews, deduplicates by SHA-256, and supports timeline and album views.
-Originals are downloaded only through an explicit action.
+Create a healthy mirror with the exact ID `photos` before uploading. v0.4.0
+accepts JPEG, PNG, and HEIC originals, records dimensions, import time, capture
+time, and optional GPS metadata, generates WebP previews, deduplicates by
+SHA-256, and supports timeline, protected-import review, and managed album
+views. Originals are downloaded only through an explicit action.
 
 ## Development and QA
 
@@ -447,7 +484,7 @@ data.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) before opening a change.
 
-## Known limitations in v0.3.0
+## Known limitations in v0.4.0
 
 - Mirrors have exactly two members; there is no parity or multi-member RAID.
 - Photo ingestion accepts JPEG, PNG, and HEIC originals and derives WebP previews.
@@ -466,7 +503,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) before opening a change.
 
 ## Release and support
 
-- [v0.3.0 release notes and earlier history](RELEASE_NOTES.md)
+- [v0.4.0 release notes and earlier history](RELEASE_NOTES.md)
 - [Security policy](SECURITY.md)
 - [Code of Conduct](CODE_OF_CONDUCT.md)
 - [Contribution guide](CONTRIBUTING.md)

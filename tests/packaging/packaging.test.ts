@@ -57,6 +57,7 @@ describe("distribution packaging", () => {
       .object({
         cap_drop: z.array(z.string()),
         healthcheck: z.object({ test: z.array(z.string()) }),
+        image: z.literal("mynas:0.4.0"),
         ports: z.array(z.object({ host_ip: z.string(), target: z.number() })),
         read_only: z.boolean(),
         volumes: z.array(z.object({ target: z.string() })),
@@ -86,9 +87,11 @@ describe("distribution packaging", () => {
 
   test("Dockerfile defines a non-root health-checked service", async () => {
     const dockerfile = await readFile(resolve(repositoryRoot, "Dockerfile"), "utf8");
+    expect(dockerfile.match(/FROM oven\/bun:1\.3\.14-slim@sha256:/g)).toHaveLength(2);
     expect(dockerfile).toContain("USER bun");
     expect(dockerfile).toContain("MYNAS_ALLOW_REMOTE=true");
     expect(dockerfile).toContain("HEALTHCHECK");
+    expect(dockerfile).toContain("COPY LICENSE /usr/share/licenses/mynas/LICENSE");
     expect(dockerfile).toContain('ENTRYPOINT ["bun", "apps/cli/src/main.ts", "serve"]');
     expect(dockerfile).toContain('"--host", "0.0.0.0"');
   });
@@ -120,6 +123,9 @@ describe("distribution packaging", () => {
     expect(release).toContain("workflow_dispatch:");
     expect(release).toContain("go-version: 1.25.4");
     expect(release).toContain("inputs.version || github.ref_name");
+    expect(release).toContain("inputs.version || github.ref");
+    expect(release).toContain('test "$RELEASE_VERSION" = "v$PACKAGE_VERSION"');
+    expect(release).toContain("git rev-parse origin/main");
     expect(ci).toContain("go-version: 1.25.4");
     for (const workflow of [ci, release]) {
       expect(workflow).not.toContain("go install github.com/trufflesecurity/trufflehog");
@@ -178,6 +184,7 @@ describe("distribution packaging", () => {
               containers: z.array(
                 z.object({
                   args: z.array(z.string()),
+                  image: z.literal("ghcr.io/achieve0410/mynas:0.4.0"),
                   readinessProbe: z.object({
                     httpGet: z.object({ path: z.literal("/api/v1/health") }),
                   }),

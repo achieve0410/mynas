@@ -1,4 +1,4 @@
-import { readFile, rm, writeFile } from "node:fs/promises";
+import { readdir, readFile, rm, utimes, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { z } from "zod";
 
@@ -12,6 +12,8 @@ const appBundlePath = join(distributionRoot, "mynas-main.js");
 const snapshotAgentBundlePath = join(distributionRoot, "slack-snapshot-agent.js");
 const keychainHelperPath = join(distributionRoot, "mynas-keychain-helper");
 const archivePath = join(distributionRoot, "mynas-darwin-arm64.tar.gz");
+const archiveInputPath = join(distributionRoot, ".mynas-archive-inputs");
+const uncompressedArchivePath = join(distributionRoot, "mynas-darwin-arm64.tar");
 
 const run = async (arguments_: readonly string[]): Promise<void> => {
   const child = Bun.spawn([...arguments_], {
@@ -23,6 +25,33 @@ const run = async (arguments_: readonly string[]): Promise<void> => {
   if (exitCode !== 0) {
     throw new Error(`${arguments_[0] ?? "command"} exited with ${exitCode}`);
   }
+};
+
+const prepareArchiveEntries = async (bundleRoot: string): Promise<readonly string[]> => {
+  const entries: string[] = [];
+  const visit = async (path: string, relativePath: string): Promise<void> => {
+    entries.push(relativePath);
+    const children = await readdir(path, { withFileTypes: true });
+    children.sort((left, right) => left.name.localeCompare(right.name, "en"));
+    for (const child of children) {
+      if (child.isSymbolicLink()) {
+        throw new Error(`macOS bundle archive refuses symlink ${join(relativePath, child.name)}`);
+      }
+      const childPath = join(path, child.name);
+      const childRelativePath = join(relativePath, child.name);
+      if (child.isDirectory()) {
+        await visit(childPath, childRelativePath);
+      } else {
+        entries.push(childRelativePath);
+      }
+    }
+  };
+  await visit(bundleRoot, "mynas-darwin-arm64");
+  const timestamp = new Date(0);
+  for (const entry of entries.toReversed()) {
+    await utimes(join(distributionRoot, entry), timestamp, timestamp);
+  }
+  return entries;
 };
 
 if (process.platform !== "darwin" || process.arch !== "arm64") {
@@ -87,16 +116,31 @@ const bundleRoot = await assembleMacosBundle({
   wrapperPath: join(repositoryRoot, "packaging", "macos", "bin", "mynas"),
 });
 await rm(archivePath, { force: true });
+await rm(uncompressedArchivePath, { force: true });
+const archiveEntries = await prepareArchiveEntries(bundleRoot);
+await writeFile(archiveInputPath, `${archiveEntries.join("\n")}\n`);
 await run([
   "tar",
   "--create",
-  "--gzip",
   "--file",
-  archivePath,
+  uncompressedArchivePath,
+  "--format",
+  "ustar",
+  "--uid",
+  "0",
+  "--gid",
+  "0",
+  "--uname",
+  "root",
+  "--gname",
+  "wheel",
+  "--no-recursion",
   "--directory",
   distributionRoot,
-  "mynas-darwin-arm64",
+  "--files-from",
+  archiveInputPath,
 ]);
+await run(["gzip", "--no-name", "--force", uncompressedArchivePath]);
 const digest = new Bun.CryptoHasher("sha256")
   .update(await Bun.file(archivePath).arrayBuffer())
   .digest("hex");
@@ -106,6 +150,7 @@ await Promise.all([
   rm(appBundlePath, { force: true }),
   rm(snapshotAgentBundlePath, { force: true }),
   rm(keychainHelperPath, { force: true }),
+  rm(archiveInputPath, { force: true }),
 ]);
 
 console.log(JSON.stringify({ archivePath, bundleRoot, checksumPath, sha256: digest, version }));

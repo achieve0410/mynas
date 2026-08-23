@@ -4,11 +4,11 @@
 
 | Version | Supported |
 | --- | --- |
-| 0.2.x | Yes |
-| 0.1.x | No |
-| Earlier or unreleased snapshots | No |
+| 0.4.x | Yes |
+| 0.3.x and earlier | No |
+| Unreleased snapshots | No |
 
-Security fixes are provided for the current v0.2 patch line.
+Security fixes are provided for the current v0.4 patch line.
 
 ## Reporting a vulnerability
 
@@ -32,15 +32,30 @@ MyNAS is designed for a trusted local machine or private cluster:
 - The browser keeps its active session credential in `localStorage`; treat
   script execution in the MyNAS origin as trusted.
 - Browser sign-out revokes the active server session.
+- Catalog restore requires a replacement owner credential and removes restored
+  users, browser sessions, and API tokens before publication.
 - S3 configuration stores environment-variable names instead of credentials.
 - Logs redact authorization and password fields and omit machine identity.
 - Mirror writes stop when either member is unavailable.
+- Snapshot-bundle encryption and signing keys, producer API tokens, and
+  optional notification credentials are held in the macOS Keychain; encrypted
+  bundle storage does not encrypt ordinary MyNAS file or photo objects.
+- The optional Slack snapshot agent is a privileged local integration. When
+  explicitly configured it can read selected database, environment, artifact,
+  token, and TLS paths; control matching launchd jobs; access the selected
+  Docker context; and update a Tailscale Serve route.
 
-MyNAS v0.2.0 does not provide TLS termination, application-level encryption at
-rest, sandboxing of the host directories you explicitly grant, multi-user
-authorization, or safe direct internet exposure. Use operating-system
+MyNAS v0.4.0 does not provide TLS termination, application-level encryption at
+rest for general file/photo storage, sandboxing of the host directories you
+explicitly grant, multi-user authorization, or safe direct internet exposure.
+Use operating-system
 permissions, encrypted disks, Kubernetes Secrets, private networking, and a
 separate trusted TLS boundary where appropriate.
+
+Treat Docker access, launchd control, Tailscale administration, snapshot
+signing keys, and configured backup roots as administrator-level capabilities.
+The optional Slack snapshot agent should use a dedicated scoped MyNAS token and
+must not be installed on a host where those local capabilities are untrusted.
 
 Compromise of the MyNAS process grants access to its configured local roots,
 SQLite catalog, and environment-provided cloud credentials. Grant only the

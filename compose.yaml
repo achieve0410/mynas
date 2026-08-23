@@ -2,7 +2,7 @@ name: mynas
 
 services:
   mynas:
-    image: mynas:0.1.0
+    image: mynas:0.4.0
     build:
       context: .
     environment:

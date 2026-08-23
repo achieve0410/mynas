@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-FROM oven/bun:1.3.14-slim AS web
+FROM oven/bun:1.3.14-slim@sha256:d56a2534ffd262e92c12fd3249d3924d296d97086da773f821d7d0477435ea04 AS web
 WORKDIR /app
 
 COPY package.json bun.lock ./
@@ -10,7 +10,7 @@ COPY tsconfig.json vite.config.ts ./
 RUN bun install --frozen-lockfile
 RUN bun run build:web
 
-FROM oven/bun:1.3.14-slim AS runtime
+FROM oven/bun:1.3.14-slim@sha256:d56a2534ffd262e92c12fd3249d3924d296d97086da773f821d7d0477435ea04 AS runtime
 WORKDIR /app
 
 ENV MYNAS_ALLOW_REMOTE=true
@@ -19,6 +19,7 @@ ENV NODE_ENV=production
 COPY package.json bun.lock ./
 COPY apps ./apps
 COPY packages ./packages
+COPY LICENSE /usr/share/licenses/mynas/LICENSE
 RUN bun install --frozen-lockfile --production
 COPY --from=web /app/apps/web/dist ./apps/web/dist
 RUN mkdir -p /data /storage && chown -R bun:bun /data /storage
