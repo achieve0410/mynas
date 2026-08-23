@@ -24,6 +24,20 @@ const run = async (
   return { stderr, stdout };
 };
 
+const runExpectedFailure = async (
+  arguments_: readonly string[],
+  input: string,
+): Promise<string> => {
+  const child = Bun.spawn([...arguments_], { stderr: "pipe", stdin: "pipe", stdout: "pipe" });
+  child.stdin.write(input);
+  child.stdin.end();
+  const [exitCode, stderr] = await Promise.all([child.exited, new Response(child.stderr).text()]);
+  if (exitCode === 0) {
+    throw new Error(`${arguments_[0] ?? "command"} unexpectedly succeeded`);
+  }
+  return stderr;
+};
+
 const auditTree = async (directory: string): Promise<void> => {
   for (const entry of await readdir(directory, { withFileTypes: true })) {
     const path = join(directory, entry.name);
@@ -110,7 +124,19 @@ if (
   throw new Error("packaged Slack snapshot agent help failed");
 }
 await run(["codesign", "--verify", "--strict", join(bundleRoot, "bin", "bun")]);
-await run(["codesign", "--verify", "--strict", join(bundleRoot, "bin", "mynas-keychain-helper")]);
+const keychainHelper = join(bundleRoot, "bin", "mynas-keychain-helper");
+await run(["codesign", "--verify", "--strict", keychainHelper]);
+const keychainProtocol = await runExpectedFailure(
+  [keychainHelper],
+  JSON.stringify({
+    account: "protocol-check",
+    operation: "protocol-check",
+    service: "io.mynas.slack-snapshot.audit",
+  }),
+);
+if (!keychainProtocol.includes("unsupported operation")) {
+  throw new Error("packaged Keychain helper protocol does not match the snapshot client");
+}
 
 console.log(
   JSON.stringify({

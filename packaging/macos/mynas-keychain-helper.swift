@@ -3,7 +3,7 @@ import Security
 
 struct KeychainRequest: Decodable {
     let account: String
-    let action: String
+    let operation: String
     let service: String
     let value: String?
 }
@@ -37,7 +37,7 @@ func run(_ request: KeychainRequest) throws {
     guard !request.account.isEmpty, !request.service.isEmpty else {
         throw HelperError.invalidRequest("account and service are required")
     }
-    switch request.action {
+    switch request.operation {
     case "put":
         guard let encoded = request.value, let value = Data(base64Encoded: encoded) else {
             throw HelperError.invalidRequest("put requires a base64 value")
@@ -65,7 +65,7 @@ func run(_ request: KeychainRequest) throws {
         }
         try writeResponse()
     default:
-        throw HelperError.invalidRequest("unsupported action")
+        throw HelperError.invalidRequest("unsupported operation")
     }
 }
 
