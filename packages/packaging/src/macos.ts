@@ -10,6 +10,8 @@ export const macosRuntimePackages = [
   "@img/sharp-libvips-darwin-arm64",
   "heic-decode",
   "libheif-js",
+  "exifreader",
+  "@xmldom/xmldom",
   "pino",
   "atomic-sleep",
   "on-exit-leak-free",

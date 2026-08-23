@@ -1,6 +1,11 @@
 export type PhotoJobStatus = "completed" | "failed" | "processing" | "queued";
 export type PhotoFormat = "heic" | "jpeg" | "png";
 
+export type PhotoLocation = {
+  readonly latitude: number;
+  readonly longitude: number;
+};
+
 export type PhotoRecord = {
   readonly capturedAt: string;
   readonly checksum: string;
@@ -9,6 +14,7 @@ export type PhotoRecord = {
   readonly height: number;
   readonly id: string;
   readonly importedAt: string;
+  readonly location: PhotoLocation | null;
   readonly originalPath: string;
   readonly previewPath: string;
   readonly width: number;
@@ -25,6 +31,14 @@ export type PhotoIngestResult = {
   readonly deduplicated: boolean;
   readonly job: PhotoJob;
   readonly photo: PhotoRecord;
+};
+
+export type PhotoMetadataBackfillReport = {
+  readonly claimed: number;
+  readonly completed: number;
+  readonly failed: number;
+  readonly remaining: number;
+  readonly updated: number;
 };
 
 export type Album = {

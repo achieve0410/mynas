@@ -4,6 +4,8 @@ import type { Sharp } from "sharp";
 import sharp from "sharp";
 
 import type { MirrorVolume } from "../../storage/src/mirror";
+import { extractPhotoMetadata } from "./metadata";
+import { PhotoMetadataStore } from "./metadata-store";
 import {
   type Album,
   type IngestPhotoInput,
@@ -11,6 +13,7 @@ import {
   type PhotoFormat,
   type PhotoIngestResult,
   type PhotoJob,
+  type PhotoMetadataBackfillReport,
   type PhotoRecord,
 } from "./models";
 import { PhotoStore } from "./store";
@@ -24,10 +27,12 @@ export {
   type PhotoIngestResult,
   type PhotoJob,
   type PhotoJobStatus,
+  type PhotoMetadataBackfillReport,
   type PhotoRecord,
 } from "./models";
 
 export class PhotoService {
+  private readonly metadataStore: PhotoMetadataStore;
   private readonly store: PhotoStore;
 
   public constructor(
@@ -35,6 +40,7 @@ export class PhotoService {
     private readonly volume: MirrorVolume,
     private readonly clock: () => Date = () => new Date(),
   ) {
+    this.metadataStore = new PhotoMetadataStore(database, this.clock);
     this.store = new PhotoStore(database, this.clock);
   }
 
@@ -45,12 +51,54 @@ export class PhotoService {
     return this.getAlbum(albumId);
   }
 
+  public async backfillMetadata(limit: number): Promise<PhotoMetadataBackfillReport> {
+    if (!Number.isInteger(limit) || limit < 1 || limit > 10) {
+      throw new PhotoError("invalid_input", "metadata backfill limit must be between 1 and 10");
+    }
+    const candidates = this.metadataStore.claim(limit);
+    let completed = 0;
+    let failed = 0;
+    let updated = 0;
+    for (const candidate of candidates) {
+      try {
+        const original = await this.volume.get(candidate.originalPath);
+        const metadata = extractPhotoMetadata(original, candidate.importedAt);
+        updated += this.metadataStore.complete(candidate.id, candidate.claimedAt, metadata) ? 1 : 0;
+        completed += 1;
+      } catch {
+        if (this.metadataStore.release(candidate.id, candidate.claimedAt)) {
+          failed += 1;
+        } else {
+          completed += 1;
+        }
+      }
+    }
+    return {
+      claimed: candidates.length,
+      completed,
+      failed,
+      remaining: this.metadataStore.remaining(),
+      updated,
+    };
+  }
+
   public createAlbum(name: string): Album {
     const cleanName = name.trim();
     if (cleanName.length === 0) {
       throw new PhotoError("invalid_input", "album name is required");
     }
     return this.store.createAlbum(cleanName);
+  }
+
+  public deleteAlbum(albumId: string): void {
+    this.store.deleteAlbum(albumId);
+  }
+
+  public async deletePhoto(photoId: string): Promise<void> {
+    const photo = this.getPhoto(photoId);
+    await this.volume.delete(photo.originalPath);
+    await this.volume.delete(photo.previewPath);
+    this.store.deletePhoto(photoId);
   }
 
   public getAlbum(albumId: string): Album {
@@ -67,6 +115,10 @@ export class PhotoService {
 
   public getPhoto(photoId: string): PhotoRecord {
     return this.store.getPhoto(photoId);
+  }
+
+  public findByChecksums(checksums: readonly string[]): readonly PhotoRecord[] {
+    return this.store.findByChecksums(checksums);
   }
 
   public async getPreview(photoId: string): Promise<Uint8Array> {
@@ -114,14 +166,16 @@ export class PhotoService {
     }
 
     const importedAt = this.clock().toISOString();
+    const extracted = extractPhotoMetadata(input.contents, importedAt);
     const photo: PhotoRecord = {
-      capturedAt: importedAt,
+      capturedAt: extracted.capturedAt,
       checksum: digest,
       filename: input.filename,
       format,
       height,
       id: crypto.randomUUID(),
       importedAt,
+      location: extracted.location,
       originalPath: `photos/originals/${digest}.${extensionFor(format)}`,
       previewPath: `photos/previews/${digest}.webp`,
       width,
@@ -146,6 +200,21 @@ export class PhotoService {
 
   public listAlbums(): readonly Album[] {
     return this.store.listAlbums();
+  }
+
+  public removeFromAlbum(albumId: string, photoId: string): void {
+    this.getAlbum(albumId);
+    this.getPhoto(photoId);
+    this.store.removeFromAlbum(albumId, photoId);
+  }
+
+  public updateAlbum(albumId: string, name: string): Album {
+    const cleanName = name.trim();
+    if (cleanName.length === 0) {
+      throw new PhotoError("invalid_input", "album name is required");
+    }
+    this.store.updateAlbum(albumId, cleanName);
+    return this.getAlbum(albumId);
   }
 }
 

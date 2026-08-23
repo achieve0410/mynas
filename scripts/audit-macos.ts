@@ -1,4 +1,5 @@
-import { lstat, readdir, readFile } from "node:fs/promises";
+import { lstat, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { z } from "zod";
 
@@ -76,6 +77,9 @@ const requiredPaths = [
   "lib/mynas/main.js",
   "lib/mynas/slack-snapshot-agent.js",
   "node_modules/@img/sharp-libvips-darwin-arm64/README.md",
+  "node_modules/@xmldom/xmldom/LICENSE",
+  "node_modules/exifreader/LICENSE",
+  "node_modules/exifreader/dist/exif-reader.js",
   "node_modules/pino/package.json",
   "node_modules/sharp/LICENSE",
   "share/mynas/web/index.html",
@@ -88,6 +92,19 @@ const snapshotAgentBundle = await readFile(
   join(bundleRoot, "lib", "mynas", "slack-snapshot-agent.js"),
   "utf8",
 );
+const requiredSnapshotAgentContracts = [
+  "MYNAS_SNAPSHOT_RETENTION_COUNT",
+  "SLACK_DOCKER_CONTEXT",
+  "SLACK_NOTIFICATION_THREAD_TS",
+  "chat.postMessage",
+  "notify:slack-bot:v1",
+  "notify:slack-channel:v1",
+] as const;
+for (const contract of requiredSnapshotAgentContracts) {
+  if (!snapshotAgentBundle.includes(contract)) {
+    throw new Error(`packaged Slack snapshot agent is missing ${contract}`);
+  }
+}
 if (
   mainBundle.includes("/" + "Users/") ||
   mainBundle.includes("/" + "home/") ||
@@ -122,6 +139,37 @@ if (
   snapshotHelp.stderr.length !== 0
 ) {
   throw new Error("packaged Slack snapshot agent help failed");
+}
+const restoreAuditRoot = await mkdtemp(join(tmpdir(), "mynas-snapshot-restore-audit-"));
+try {
+  const fakeHelper = join(restoreAuditRoot, "fake-keychain-helper");
+  const helperCalled = join(restoreAuditRoot, "helper-called");
+  await writeFile(
+    fakeHelper,
+    `#!/bin/sh
+: > ${JSON.stringify(helperCalled)}
+printf '%s\\n' '{"value":"${Buffer.alloc(32, 1).toString("base64")}"}'
+`,
+    { mode: 0o700 },
+  );
+  const restoreFailure = await runExpectedFailure(
+    [
+      "/usr/bin/env",
+      `MYNAS_SNAPSHOT_KEYCHAIN_HELPER=${fakeHelper}`,
+      "MYNAS_URL=http://127.0.0.1:1",
+      join(bundleRoot, "bin", "bun"),
+      join(bundleRoot, "lib", "mynas", "slack-snapshot-agent.js"),
+      "restore",
+      "00000000-0000-4000-8000-000000000001",
+      join(restoreAuditRoot, "restore"),
+    ],
+    "",
+  );
+  if (!(await Bun.file(helperCalled).exists())) {
+    throw new Error(`packaged restore failed before Keychain access: ${restoreFailure}`);
+  }
+} finally {
+  await rm(restoreAuditRoot, { force: true, recursive: true });
 }
 await run(["codesign", "--verify", "--strict", join(bundleRoot, "bin", "bun")]);
 const keychainHelper = join(bundleRoot, "bin", "mynas-keychain-helper");

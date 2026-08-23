@@ -1,6 +1,6 @@
 {
   "name": "mynas",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Local-first mirrored NAS and photo gallery for macOS",
   "homepage": "https://github.com/achieve0410/mynas#readme",
   "license": "Apache-2.0",
@@ -42,6 +42,7 @@
     "@fontsource/ibm-plex-mono": "5.3.0",
     "@tanstack/react-query": "5.101.4",
     "commander": "15.0.0",
+    "exifreader": "4.43.0",
     "heic-decode": "2.1.0",
     "hono": "4.13.1",
     "lucide-react": "1.31.0",

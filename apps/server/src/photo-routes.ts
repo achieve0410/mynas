@@ -36,6 +36,17 @@ const albumSchema = z.object({ name: z.string().trim().min(1).max(120) });
 const photoArchiveSchema = z.object({
   photoIds: z.array(z.string().uuid()).min(1).max(500),
 });
+const photoChecksumLookupSchema = z
+  .object({
+    checksums: z
+      .array(z.string().regex(/^[a-f0-9]{64}$/))
+      .min(1)
+      .max(500),
+  })
+  .strict();
+const photoMetadataBackfillSchema = z
+  .object({ limit: z.number().int().min(1).max(10).default(10) })
+  .strict();
 const MAX_PHOTO_UPLOAD_BYTES = 25 * 1_024 * 1_024;
 
 const exactArrayBuffer = (contents: Uint8Array): ArrayBuffer => {
@@ -89,6 +100,35 @@ export const registerPhotoRoutes = (app: AppInstance, services: AppServices): vo
   app.get("/api/v1/photos", async (context) =>
     context.json((await serviceFor(services)).listTimeline()),
   );
+
+  app.post("/api/v1/photos/metadata/backfill", async (context) => {
+    const { limit } = photoMetadataBackfillSchema.parse(await context.req.json());
+    const report = await recordActivity(
+      services,
+      "photo.metadata.backfill",
+      { kind: "photo-metadata", path: "photos" },
+      async () => (await serviceFor(services)).backfillMetadata(limit),
+    );
+    return context.json(report);
+  });
+
+  app.delete("/api/v1/photos/:id", async (context) => {
+    const photoId = context.req.param("id");
+    await recordActivity(services, "photo.delete", { kind: "photo", path: photoId }, async () =>
+      (await serviceFor(services)).deletePhoto(photoId),
+    );
+    return context.body(null, 204);
+  });
+
+  app.post("/api/v1/photos/checksums", async (context) => {
+    const { checksums } = photoChecksumLookupSchema.parse(await context.req.json());
+    const matches = (await serviceFor(services)).findByChecksums(checksums).map((photo) => ({
+      checksum: photo.checksum,
+      filename: photo.filename,
+      id: photo.id,
+    }));
+    return context.json({ matches });
+  });
 
   app.post("/api/v1/photos/archive", async (context) => {
     const { photoIds } = photoArchiveSchema.parse(await context.req.json());
@@ -163,6 +203,18 @@ export const registerPhotoRoutes = (app: AppInstance, services: AppServices): vo
     context.json((await serviceFor(services)).getAlbum(context.req.param("id"))),
   );
 
+  app.patch("/api/v1/albums/:id", async (context) => {
+    const body = albumSchema.parse(await context.req.json());
+    return context.json(
+      (await serviceFor(services)).updateAlbum(context.req.param("id"), body.name),
+    );
+  });
+
+  app.delete("/api/v1/albums/:id", async (context) => {
+    (await serviceFor(services)).deleteAlbum(context.req.param("id"));
+    return context.body(null, 204);
+  });
+
   app.post("/api/v1/albums/:albumId/photos/:photoId", async (context) =>
     context.json(
       (await serviceFor(services)).addToAlbum(
@@ -171,4 +223,16 @@ export const registerPhotoRoutes = (app: AppInstance, services: AppServices): vo
       ),
     ),
   );
+
+  app.delete("/api/v1/albums/:albumId/photos/:photoId", async (context) => {
+    const albumId = context.req.param("albumId");
+    const photoId = context.req.param("photoId");
+    await recordActivity(
+      services,
+      "album.photo.remove",
+      { kind: "album-photo", path: `${albumId}/${photoId}` },
+      async () => (await serviceFor(services)).removeFromAlbum(albumId, photoId),
+    );
+    return context.body(null, 204);
+  });
 };

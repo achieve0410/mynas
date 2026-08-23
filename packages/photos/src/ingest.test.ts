@@ -2,6 +2,7 @@ import { Database } from "bun:sqlite";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import sharp from "sharp";
 
+import { syntheticExifJpeg } from "../../../tests/fixtures/exif-photo";
 import {
   syntheticHeic,
   syntheticJpeg,
@@ -97,6 +98,34 @@ describe("PhotoService", () => {
     expect(new TextDecoder().decode((await service.getPreview(result.photo.id)).slice(0, 4))).toBe(
       "RIFF",
     );
+  });
+
+  test("stores extracted metadata without altering the original", async () => {
+    const original = syntheticExifJpeg({
+      dateTimeOriginal: "2024:03:04 05:06:07",
+      latitude: 37.5,
+      longitude: 127,
+      offsetTimeOriginal: "+09:00",
+    });
+
+    const result = await service.ingest({
+      contents: original,
+      filename: "metadata.jpg",
+    });
+
+    expect(result.photo).toMatchObject({
+      capturedAt: "2024-03-03T20:06:07.000Z",
+      importedAt: "2026-01-02T03:04:05.000Z",
+      location: { latitude: 37.5, longitude: 127 },
+    });
+    expect(await service.getOriginal(result.photo.id)).toEqual(original);
+    expect(
+      database
+        .query<{ readonly metadataVersion: number }, [string]>(
+          "SELECT metadata_version AS metadataVersion FROM photos WHERE id = ?",
+        )
+        .get(result.photo.id),
+    ).toEqual({ metadataVersion: 1 });
   });
 
   test("stores PNG and HEIC originals with format-specific metadata", async () => {
