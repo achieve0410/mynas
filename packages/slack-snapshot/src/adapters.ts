@@ -3,8 +3,10 @@ import { join } from "node:path";
 import { z } from "zod";
 
 import { sha256 } from "../../snapshots/src/manifest";
+import { type SnapshotBundle, snapshotBundleSchema } from "../../snapshots/src/models";
 import type { SnapshotProducerStage, SnapshotUploadClient } from "./producer";
 import type { SnapshotDownloadClient } from "./restore";
+import type { SnapshotRetentionClient } from "./retention";
 
 export type FilesystemSnapshotStage = SnapshotProducerStage & {
   readonly directory: string;
@@ -44,7 +46,7 @@ export const createFilesystemStage = async (parent: string): Promise<FilesystemS
   };
 };
 
-export class HttpSnapshotUploadClient implements SnapshotUploadClient {
+export class HttpSnapshotUploadClient implements SnapshotRetentionClient, SnapshotUploadClient {
   public constructor(private readonly options: HttpClientOptions) {
     if (options.token.length === 0) {
       throw new Error("MyNAS snapshot token is required");
@@ -77,6 +79,17 @@ export class HttpSnapshotUploadClient implements SnapshotUploadClient {
       },
       method: "PUT",
     });
+  }
+
+  public async delete(bundleId: string): Promise<void> {
+    await this.request(`/api/v1/snapshot-bundles/${z.uuid().parse(bundleId)}`, {
+      method: "DELETE",
+    });
+  }
+
+  public async list(): Promise<readonly SnapshotBundle[]> {
+    const response = await this.request("/api/v1/snapshot-bundles", { method: "GET" });
+    return z.array(snapshotBundleSchema).parse(await response.json());
   }
 
   public async uploadChunk(id: string, index: number, contents: Uint8Array): Promise<void> {

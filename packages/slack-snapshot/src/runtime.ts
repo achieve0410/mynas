@@ -6,16 +6,20 @@ import type { SlackLifecycleCommandRunner, SlackPortWaiter } from "./slack-lifec
 
 const readStderr = async (stream: ReadableStream<Uint8Array>): Promise<string> =>
   new Response(stream).text();
+const commandTimeoutMilliseconds = 120_000;
 
-export const mysqlLogicalDump = async function* (container: string): AsyncIterable<Uint8Array> {
-  const process = Bun.spawn(
-    [
-      "docker",
-      "exec",
-      container,
-      "sh",
-      "-lc",
-      `MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysqldump \
+export const mysqlLogicalDumpArguments = (
+  container: string,
+  dockerContext: string,
+): readonly string[] => [
+  "docker",
+  "--context",
+  dockerContext,
+  "exec",
+  container,
+  "sh",
+  "-lc",
+  `MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysqldump \
 --user=root \
 --single-transaction \
 --quick \
@@ -26,9 +30,16 @@ export const mysqlLogicalDump = async function* (container: string): AsyncIterab
 --no-tablespaces \
 --default-character-set=utf8mb4 \
 "$MYSQL_DATABASE"`,
-    ],
-    { stderr: "pipe", stdout: "pipe" },
-  );
+];
+
+export const mysqlLogicalDump = async function* (
+  container: string,
+  dockerContext: string,
+): AsyncIterable<Uint8Array> {
+  const process = Bun.spawn([...mysqlLogicalDumpArguments(container, dockerContext)], {
+    stderr: "pipe",
+    stdout: "pipe",
+  });
   const stderr = readStderr(process.stderr);
   for await (const contents of process.stdout) {
     yield new Uint8Array(contents);
@@ -44,6 +55,7 @@ const runCommand = async (arguments_: readonly string[]) => {
   const process = Bun.spawn([...arguments_], {
     stderr: "pipe",
     stdout: "pipe",
+    timeout: commandTimeoutMilliseconds,
   });
   const [exitCode, stderr, stdout] = await Promise.all([
     process.exited,
@@ -51,6 +63,45 @@ const runCommand = async (arguments_: readonly string[]) => {
     new Response(process.stdout).text(),
   ]);
   return { exitCode, stderr, stdout };
+};
+
+export class DockerContextUnavailableError extends Error {
+  public override readonly name = "DockerContextUnavailableError";
+
+  public constructor(context: string, detail: string) {
+    super(`Docker context ${context} is unavailable: ${detail}`);
+  }
+}
+
+export const ensureDockerContextReady = async (
+  dockerContext: string,
+  run: SlackLifecycleCommandRunner = runCommand,
+): Promise<void> => {
+  const checkArguments = ["docker", "--context", dockerContext, "info"] as const;
+  const initial = await run(checkArguments);
+  if (initial.exitCode === 0) {
+    return;
+  }
+  if (dockerContext !== "colima") {
+    throw new DockerContextUnavailableError(
+      dockerContext,
+      initial.stderr.trim() || "Docker daemon check failed",
+    );
+  }
+  const started = await run(["colima", "start", "--activate=false"]);
+  if (started.exitCode !== 0) {
+    throw new DockerContextUnavailableError(
+      dockerContext,
+      started.stderr.trim() || `Colima start failed with ${started.exitCode}`,
+    );
+  }
+  const ready = await run(checkArguments);
+  if (ready.exitCode !== 0) {
+    throw new DockerContextUnavailableError(
+      dockerContext,
+      ready.stderr.trim() || "Docker daemon did not become ready",
+    );
+  }
 };
 
 export const runLaunchctl: LaunchctlRunner = (arguments_) =>

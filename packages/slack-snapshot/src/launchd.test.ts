@@ -32,6 +32,7 @@ describe("Slack snapshot launchd integration", () => {
       agentExecutable: "/Applications/MyNAS Runtime/bin/slack-snapshot-agent",
       home,
       keychainHelper: "/Applications/MyNAS Runtime/bin/mynas-keychain-helper",
+      notificationThreadTs: "1700000000.000001",
       runLaunchctl,
       uid: 501,
     });
@@ -46,9 +47,14 @@ describe("Slack snapshot launchd integration", () => {
     expect(plist).toContain("<integer>15</integer>");
     expect(plist).toContain("<string>create</string>");
     expect(plist).toContain("mynas-keychain-helper");
+    expect(plist).toContain("<key>SLACK_NOTIFICATION_THREAD_TS</key>");
+    expect(plist).toContain("<string>1700000000.000001</string>");
     expect(plist).not.toContain("mynas:slack-dashboard");
     expect(plist).not.toContain("enc:v1");
     expect(plist).not.toContain("sig:v1");
+    expect(plist).not.toContain("notify:slack-bot:v1");
+    expect(plist).not.toContain("notify:slack-channel:v1");
+    expect(plist).not.toContain("xoxb-");
     expect(calls).toEqual([
       ["bootout", "gui/501/io.mynas.slack-snapshot"],
       ["bootstrap", "gui/501", result.plistPath],
@@ -62,6 +68,7 @@ describe("Slack snapshot launchd integration", () => {
       agentExecutable: "/tmp/slack-snapshot-agent",
       home,
       keychainHelper: "/tmp/mynas-keychain-helper",
+      notificationThreadTs: "1700000000.000001",
       runLaunchctl: async () => ({ exitCode: 0, stderr: "", stdout: "" }),
       uid: 502,
     });
@@ -91,6 +98,7 @@ describe("Slack snapshot launchd integration", () => {
       agentExecutable: "/tmp/slack-snapshot-agent",
       home,
       keychainHelper: "/tmp/mynas-keychain-helper",
+      notificationThreadTs: "1700000000.000001",
       runLaunchctl: async () => ({ exitCode: 0, stderr: "", stdout: "" }),
       uid: 503,
     });

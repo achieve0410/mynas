@@ -92,4 +92,50 @@ describe("Slack snapshot adapters", () => {
       "/api/v1/snapshot-bundles/00000000-0000-4000-8000-000000000001/chunks/3",
     ]);
   });
+
+  test("lists and deletes completed bundles through authenticated retention requests", async () => {
+    const requests: Request[] = [];
+    const id = "00000000-0000-4000-8000-000000000001";
+    const client = new HttpSnapshotUploadClient({
+      fetch: async (input, init) => {
+        const request = new Request(input, init);
+        requests.push(request);
+        return request.method === "GET"
+          ? Response.json([
+              {
+                completedAt: "2026-08-15T03:20:00.000Z",
+                createdAt: "2026-08-15T03:15:00.000Z",
+                expectedChunkCount: 1,
+                expectedTotalBytes: bytes.byteLength,
+                id,
+                manifestChecksum: "1".repeat(64),
+                manifestKey: `manifest-${id}`,
+                producerId: "fixture-producer",
+                producerKind: "slack-dashboard",
+                signatureChecksum: "2".repeat(64),
+                signatureKey: `signature-${id}`,
+                status: "complete",
+                volumeId: "slack-backups",
+              },
+            ])
+          : new Response(null, { status: 204 });
+      },
+      producerId: "fixture-producer",
+      producerKind: "slack-dashboard",
+      token: "secret-token",
+      url: "http://127.0.0.1:7331",
+      volumeId: "slack-backups",
+    });
+
+    expect(await client.list()).toHaveLength(1);
+    await client.delete(id);
+
+    expect(requests.map(({ method, url }) => [method, new URL(url).pathname])).toEqual([
+      ["GET", "/api/v1/snapshot-bundles"],
+      ["DELETE", `/api/v1/snapshot-bundles/${id}`],
+    ]);
+    expect(
+      requests.every((request) => request.headers.get("authorization") === "Bearer secret-token"),
+    ).toBe(true);
+  });
 });

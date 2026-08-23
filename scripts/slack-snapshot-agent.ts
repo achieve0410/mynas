@@ -2,50 +2,44 @@ import { homedir, hostname } from "node:os";
 import { join, resolve } from "node:path";
 import { z } from "zod";
 
+import { HttpSnapshotDownloadClient } from "../packages/slack-snapshot/src/adapters";
+import { runSlackSnapshotCreate } from "../packages/slack-snapshot/src/create-agent";
 import {
-  createFilesystemStage,
-  HttpSnapshotDownloadClient,
-  HttpSnapshotUploadClient,
-} from "../packages/slack-snapshot/src/adapters";
-import { collectSlackArchive, withQuiescedWriters } from "../packages/slack-snapshot/src/collector";
+  decodeKeychainText,
+  snapshotKeychainAccounts,
+} from "../packages/slack-snapshot/src/credentials";
 import {
   installSlackSnapshotLaunchd,
   slackSnapshotLaunchdStatus,
   uninstallSlackSnapshotLaunchd,
 } from "../packages/slack-snapshot/src/launchd";
-import { SlackSnapshotProducer } from "../packages/slack-snapshot/src/producer";
 import { restoreSnapshot } from "../packages/slack-snapshot/src/restore";
-import {
-  mysqlLogicalDump,
-  runLaunchctl,
-  runTailscale,
-  slackLaunchdLoaded,
-  verifySlackPlist,
-  waitForSlackPort,
-  withDirectoryLock,
-} from "../packages/slack-snapshot/src/runtime";
-import { SlackDashboardLifecycle } from "../packages/slack-snapshot/src/slack-lifecycle";
+import { runLaunchctl } from "../packages/slack-snapshot/src/runtime";
 import {
   processSnapshotKeychainRunner,
   SnapshotKeychain,
 } from "../packages/snapshots/src/keychain";
-import { sha256 } from "../packages/snapshots/src/manifest";
 
+const slackThreadTimestampSchema = z.string().regex(/^\d+\.\d{6}$/);
 const environmentSchema = z.object({
   MYNAS_SNAPSHOT_KEYCHAIN_HELPER: z.string().min(1),
+  MYNAS_SNAPSHOT_RETENTION_COUNT: z.coerce.number().int().min(1).max(365),
   MYNAS_SNAPSHOT_STAGE_ROOT: z.string().min(1),
   MYNAS_SNAPSHOT_VOLUME_ID: z.string().min(1),
   MYNAS_URL: z.url(),
   SLACK_DASHBOARD_ROOT: z.string().min(1),
   SLACK_DASHBOARD_SOURCE_ROOT: z.string().min(1),
+  SLACK_DOCKER_CONTEXT: z.string().min(1),
   SLACK_HERMES_QUESTION_ROOT: z.string().min(1),
   SLACK_MYSQL_CONTAINER: z.string().min(1),
+  SLACK_NOTIFICATION_THREAD_TS: slackThreadTimestampSchema.optional(),
 });
 
 const home = homedir();
 const loadEnvironment = (): z.infer<typeof environmentSchema> =>
   environmentSchema.parse({
     MYNAS_SNAPSHOT_KEYCHAIN_HELPER: process.env.MYNAS_SNAPSHOT_KEYCHAIN_HELPER,
+    MYNAS_SNAPSHOT_RETENTION_COUNT: process.env.MYNAS_SNAPSHOT_RETENTION_COUNT ?? "14",
     MYNAS_SNAPSHOT_STAGE_ROOT:
       process.env.MYNAS_SNAPSHOT_STAGE_ROOT ??
       join(home, "Library", "Caches", "MyNAS", "slack-snapshot"),
@@ -57,10 +51,12 @@ const loadEnvironment = (): z.infer<typeof environmentSchema> =>
     SLACK_DASHBOARD_SOURCE_ROOT:
       process.env.SLACK_DASHBOARD_SOURCE_ROOT ??
       join(home, "Documents", "workspace", "slack-dashboard"),
+    SLACK_DOCKER_CONTEXT: process.env.SLACK_DOCKER_CONTEXT ?? "colima",
     SLACK_HERMES_QUESTION_ROOT:
       process.env.SLACK_HERMES_QUESTION_ROOT ??
       join(home, "Documents", "workspace", "hermes-team-shared", "questions"),
     SLACK_MYSQL_CONTAINER: process.env.SLACK_MYSQL_CONTAINER ?? "slack_dashboard_db",
+    SLACK_NOTIFICATION_THREAD_TS: process.env.SLACK_NOTIFICATION_THREAD_TS,
   });
 
 const usage = (): void => {
@@ -101,6 +97,9 @@ const main = async (): Promise<void> => {
             ...base,
             agentExecutable: z.string().min(1).parse(process.env.MYNAS_SNAPSHOT_AGENT_EXECUTABLE),
             keychainHelper: z.string().min(1).parse(process.env.MYNAS_SNAPSHOT_KEYCHAIN_HELPER),
+            notificationThreadTs: slackThreadTimestampSchema.parse(
+              process.env.SLACK_NOTIFICATION_THREAD_TS,
+            ),
           })
         : command === "status"
           ? await slackSnapshotLaunchdStatus(base)
@@ -114,13 +113,12 @@ const main = async (): Promise<void> => {
     processSnapshotKeychainRunner(environment.MYNAS_SNAPSHOT_KEYCHAIN_HELPER),
     "io.mynas.slack-snapshot",
   );
-  const [tokenBytes, encryptionRoot, signingPublicKey] = await Promise.all([
-    keychain.get("mynas:slack-dashboard"),
-    keychain.get("enc:v1"),
-    keychain.get("sig-public:v1"),
-  ]);
-  const token = new TextDecoder("utf-8", { fatal: true }).decode(tokenBytes);
   if (command === "restore") {
+    const [tokenBytes, encryptionRoot, signingPublicKey] = await Promise.all([
+      keychain.get(snapshotKeychainAccounts.snapshotToken),
+      keychain.get(snapshotKeychainAccounts.encryptionRoot),
+      keychain.get(snapshotKeychainAccounts.signingPublicKey),
+    ]);
     const destination = process.argv[4];
     if (destination === undefined) {
       throw new Error("restore destination is required");
@@ -131,7 +129,7 @@ const main = async (): Promise<void> => {
         fetch,
         producerId: hostname(),
         producerKind: "slack-dashboard",
-        token,
+        token: decodeKeychainText(tokenBytes),
         url: environment.MYNAS_URL,
         volumeId: environment.MYNAS_SNAPSHOT_VOLUME_ID,
       }),
@@ -142,94 +140,16 @@ const main = async (): Promise<void> => {
     process.stdout.write(`${JSON.stringify({ destination: resolve(destination) })}\n`);
     return;
   }
-  const signingPrivateKey = await keychain.get("sig:v1");
-  const producer = new SlackSnapshotProducer({
-    client: new HttpSnapshotUploadClient({
-      fetch,
-      producerId: hostname(),
-      producerKind: "slack-dashboard",
-      token,
-      url: environment.MYNAS_URL,
-      volumeId: environment.MYNAS_SNAPSHOT_VOLUME_ID,
-    }),
-    createSnapshotId: () => crypto.getRandomValues(new Uint8Array(16)).toHex(),
-    createStage: async () => createFilesystemStage(environment.MYNAS_SNAPSHOT_STAGE_ROOT),
-    encryptionKeyId: "enc-v1",
-    encryptionRoot,
-    plaintextChunkBytes: 8 * 1_024 * 1_024,
-    signingKeyId: sha256(signingPublicKey),
-    signingPrivateKey,
-    withLock: async (operation) =>
-      withDirectoryLock(join(environment.MYNAS_SNAPSHOT_STAGE_ROOT, "active.lock"), operation),
-  });
-  const uid = process.getuid?.();
-  if (uid === undefined) {
-    throw new Error("Slack launchd lifecycle requires a numeric user id");
-  }
-  const lifecycle = new SlackDashboardLifecycle({
-    home,
-    isLoaded: slackLaunchdLoaded(uid),
-    runLaunchctl,
-    runTailscale,
-    uid,
-    verifyPlist: verifySlackPlist,
-    waitForPort: waitForSlackPort,
-  });
-  const result = await withQuiescedWriters(
-    async () => lifecycle.stop(),
-    async () => lifecycle.start(),
-    async () =>
-      producer.create(
-        collectSlackArchive({
-          files: [
-            {
-              archivePath: "secrets/mysql.env",
-              path: join(
-                environment.SLACK_DASHBOARD_SOURCE_ROOT,
-                "db",
-                "slack_dashboard_db",
-                ".env",
-              ),
-            },
-            {
-              archivePath: "secrets/production.env",
-              path: join(environment.SLACK_DASHBOARD_ROOT, "backend", "deploy", "production.env"),
-            },
-            {
-              archivePath: "secrets/hermes.env",
-              path: join(home, ".hermes", ".env"),
-            },
-            {
-              archivePath: "legacy/dashboard.sqlite3",
-              path: join(environment.SLACK_DASHBOARD_SOURCE_ROOT, "db", "dashboard.sqlite3"),
-            },
-          ],
-          mysqlDump: mysqlLogicalDump(environment.SLACK_MYSQL_CONTAINER),
-          roots: [
-            {
-              archivePrefix: "platform-artifacts",
-              root: join(environment.SLACK_DASHBOARD_ROOT, "db", "platform-artifacts"),
-            },
-            {
-              archivePrefix: "hermes-questions",
-              root: environment.SLACK_HERMES_QUESTION_ROOT,
-            },
-            {
-              archivePrefix: "secrets/platform-tokens",
-              root: join(home, ".hermes", "dashboard-platform-tokens"),
-            },
-            {
-              archivePrefix: "secrets/service",
-              root: join(environment.SLACK_DASHBOARD_ROOT, "secrets"),
-            },
-            {
-              archivePrefix: "secrets/tls",
-              root: join(environment.SLACK_DASHBOARD_ROOT, "pem"),
-            },
-          ],
-        }),
+  const result = await runSlackSnapshotCreate({
+    environment: {
+      ...environment,
+      SLACK_NOTIFICATION_THREAD_TS: slackThreadTimestampSchema.parse(
+        environment.SLACK_NOTIFICATION_THREAD_TS,
       ),
-  );
+    },
+    home,
+    keychain,
+  });
   process.stdout.write(`${JSON.stringify(result)}\n`);
 };
 

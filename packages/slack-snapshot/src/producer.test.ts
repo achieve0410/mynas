@@ -87,6 +87,7 @@ describe("SlackSnapshotProducer", () => {
       ),
     ).toBe(true);
     const manifest = parseCanonicalManifest(completedManifest);
+    expect(result.totalBytes).toBe(manifest.totalBytes);
     expect(manifest.metadata).toEqual({
       encryptionKeyId: "enc-v1",
       signingKeyId: "sig-v1",

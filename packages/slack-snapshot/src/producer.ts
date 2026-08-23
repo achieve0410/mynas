@@ -35,6 +35,12 @@ type StagedChunk = {
   readonly size: number;
 };
 
+export type SnapshotCreationResult = {
+  readonly bundleId: string;
+  readonly snapshotId: string;
+  readonly totalBytes: number;
+};
+
 const concatenate = (first: Uint8Array, second: Uint8Array): Uint8Array => {
   const result = new Uint8Array(first.byteLength + second.byteLength);
   result.set(first);
@@ -49,15 +55,11 @@ export class SlackSnapshotProducer {
     }
   }
 
-  public create(
-    source: AsyncIterable<Uint8Array>,
-  ): Promise<{ readonly bundleId: string; readonly snapshotId: string }> {
+  public create(source: AsyncIterable<Uint8Array>): Promise<SnapshotCreationResult> {
     return this.options.withLock(async () => this.createUnlocked(source));
   }
 
-  private async createUnlocked(
-    source: AsyncIterable<Uint8Array>,
-  ): Promise<{ readonly bundleId: string; readonly snapshotId: string }> {
+  private async createUnlocked(source: AsyncIterable<Uint8Array>): Promise<SnapshotCreationResult> {
     const stage = await this.options.createStage();
     const snapshotId = this.options.createSnapshotId();
     try {
@@ -82,7 +84,7 @@ export class SlackSnapshotProducer {
         );
       }
       await this.options.client.complete(bundle.id, manifest, signature);
-      return { bundleId: bundle.id, snapshotId };
+      return { bundleId: bundle.id, snapshotId, totalBytes };
     } finally {
       await stage.remove();
     }

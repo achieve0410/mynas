@@ -21,6 +21,7 @@ type BaseOptions = {
 type InstallOptions = BaseOptions & {
   readonly agentExecutable: string;
   readonly keychainHelper: string;
+  readonly notificationThreadTs: string;
 };
 
 const escaped = (value: string): string =>
@@ -53,6 +54,7 @@ const renderPlist = (options: InstallOptions): string => {
     agent: escaped(options.agentExecutable),
     helper: escaped(options.keychainHelper),
     home: escaped(options.home),
+    notificationThreadTs: escaped(options.notificationThreadTs),
     stderr: escaped(join(logRoot, "slack-snapshot.err.log")),
     stdout: escaped(join(logRoot, "slack-snapshot.log")),
   };
@@ -68,6 +70,7 @@ const renderPlist = (options: InstallOptions): string => {
     <key>HOME</key><string>${values.home}</string>
     <key>MYNAS_SNAPSHOT_KEYCHAIN_HELPER</key><string>${values.helper}</string>
     <key>PATH</key><string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>SLACK_NOTIFICATION_THREAD_TS</key><string>${values.notificationThreadTs}</string>
   </dict>
   <key>StartCalendarInterval</key>
   <dict><key>Hour</key><integer>3</integer><key>Minute</key><integer>15</integer></dict>
