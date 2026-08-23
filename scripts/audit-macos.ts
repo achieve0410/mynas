@@ -56,8 +56,11 @@ const requiredPaths = [
   "VERSION",
   "bin/bun",
   "bin/mynas",
+  "bin/mynas-keychain-helper",
+  "bin/slack-snapshot-agent",
   "install",
   "lib/mynas/main.js",
+  "lib/mynas/slack-snapshot-agent.js",
   "node_modules/@img/sharp-libvips-darwin-arm64/README.md",
   "node_modules/pino/package.json",
   "node_modules/sharp/LICENSE",
@@ -67,7 +70,16 @@ await Promise.all(requiredPaths.map((path) => lstat(join(bundleRoot, path))));
 await auditTree(bundleRoot);
 
 const mainBundle = await readFile(join(bundleRoot, "lib", "mynas", "main.js"), "utf8");
-if (mainBundle.includes("/" + "Users/") || mainBundle.includes("/" + "home/")) {
+const snapshotAgentBundle = await readFile(
+  join(bundleRoot, "lib", "mynas", "slack-snapshot-agent.js"),
+  "utf8",
+);
+if (
+  mainBundle.includes("/" + "Users/") ||
+  mainBundle.includes("/" + "home/") ||
+  snapshotAgentBundle.includes("/" + "Users/") ||
+  snapshotAgentBundle.includes("/" + "home/")
+) {
   throw new Error("application bundle exposes an absolute build-home path");
 }
 
@@ -90,7 +102,15 @@ const versionReceipt = await run([join(bundleRoot, "bin", "mynas"), "--version"]
 if (versionReceipt.stdout.trim() !== version || versionReceipt.stderr.length !== 0) {
   throw new Error("packaged CLI version does not match package.json");
 }
+const snapshotHelp = await run([join(bundleRoot, "bin", "slack-snapshot-agent"), "--help"]);
+if (
+  !snapshotHelp.stdout.includes("slack-snapshot-agent restore") ||
+  snapshotHelp.stderr.length !== 0
+) {
+  throw new Error("packaged Slack snapshot agent help failed");
+}
 await run(["codesign", "--verify", "--strict", join(bundleRoot, "bin", "bun")]);
+await run(["codesign", "--verify", "--strict", join(bundleRoot, "bin", "mynas-keychain-helper")]);
 
 console.log(
   JSON.stringify({

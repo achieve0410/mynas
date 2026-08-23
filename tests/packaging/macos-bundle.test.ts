@@ -30,22 +30,28 @@ describe("assembleMacosBundle", () => {
     const bunExecutablePath = join(sources, "bun");
     const bunLicensePath = join(sources, "BUN-LICENSE.md");
     const installerPath = join(sources, "install");
+    const keychainHelperPath = join(sources, "mynas-keychain-helper");
     const gplLicensePath = join(sources, "GPL-3.0.txt");
     const lgplLicensePath = join(sources, "LGPL-3.0.txt");
     const licensePath = join(sources, "LICENSE");
     const libvipsNoticePath = join(sources, "LIBVIPS-NOTICE.md");
     const readmePath = join(sources, "README.md");
+    const snapshotAgentBundlePath = join(sources, "slack-snapshot-agent.js");
+    const snapshotAgentWrapperPath = join(sources, "slack-snapshot-agent");
     const wrapperPath = join(sources, "mynas");
     await Promise.all([
       writeFile(appBundlePath, "console.log('mynas')"),
       writeFile(bunExecutablePath, "synthetic bun runtime"),
       writeFile(bunLicensePath, "Bun runtime notices\n"),
       writeFile(installerPath, "#!/bin/sh\n"),
+      writeFile(keychainHelperPath, "synthetic keychain helper"),
       writeFile(gplLicensePath, "GPLv3\n"),
       writeFile(lgplLicensePath, "LGPLv3\n"),
       writeFile(licensePath, "Apache License\n"),
       writeFile(libvipsNoticePath, "libvips source notice\n"),
       writeFile(readmePath, "# MyNAS\n"),
+      writeFile(snapshotAgentBundlePath, "console.log('snapshot agent')"),
+      writeFile(snapshotAgentWrapperPath, "#!/bin/sh\n"),
       writeFile(wrapperPath, "#!/bin/sh\n"),
     ]);
 
@@ -57,10 +63,13 @@ describe("assembleMacosBundle", () => {
       destinationRoot: join(root, "dist"),
       gplLicensePath,
       installerPath,
+      keychainHelperPath,
       lgplLicensePath,
       licensePath,
       libvipsNoticePath,
       readmePath,
+      snapshotAgentBundlePath,
+      snapshotAgentWrapperPath,
       version: "0.1.0",
       webRoot,
       wrapperPath,
@@ -71,6 +80,8 @@ describe("assembleMacosBundle", () => {
       .sort();
     expect(entries).toContain("bin/bun");
     expect(entries).toContain("bin/mynas");
+    expect(entries).toContain("bin/mynas-keychain-helper");
+    expect(entries).toContain("bin/slack-snapshot-agent");
     expect(entries).toContain("BUN-LICENSE.md");
     expect(entries).toContain("GPL-3.0.txt");
     expect(entries).toContain("install");
@@ -79,6 +90,7 @@ describe("assembleMacosBundle", () => {
     expect(entries).toContain("LIBVIPS-NOTICE.md");
     expect(entries).toContain("README.md");
     expect(entries).toContain("lib/mynas/main.js");
+    expect(entries).toContain("lib/mynas/slack-snapshot-agent.js");
     expect(entries).toContain("node_modules/sharp/package.json");
     expect(entries).toContain("node_modules/pino/package.json");
     expect(entries).toContain("node_modules/thread-stream/package.json");
@@ -88,6 +100,8 @@ describe("assembleMacosBundle", () => {
     expect(await readFile(join(bundleRoot, "VERSION"), "utf8")).toBe("0.1.0\n");
     expect((await stat(join(bundleRoot, "bin/bun"))).mode & 0o777).toBe(0o755);
     expect((await stat(join(bundleRoot, "bin/mynas"))).mode & 0o777).toBe(0o755);
+    expect((await stat(join(bundleRoot, "bin/mynas-keychain-helper"))).mode & 0o777).toBe(0o755);
+    expect((await stat(join(bundleRoot, "bin/slack-snapshot-agent"))).mode & 0o777).toBe(0o755);
     expect((await stat(join(bundleRoot, "install"))).mode & 0o777).toBe(0o755);
   });
 });

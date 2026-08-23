@@ -8,10 +8,16 @@ import {
   HttpSnapshotUploadClient,
 } from "../packages/slack-snapshot/src/adapters";
 import { collectSlackArchive, withQuiescedWriters } from "../packages/slack-snapshot/src/collector";
+import {
+  installSlackSnapshotLaunchd,
+  slackSnapshotLaunchdStatus,
+  uninstallSlackSnapshotLaunchd,
+} from "../packages/slack-snapshot/src/launchd";
 import { SlackSnapshotProducer } from "../packages/slack-snapshot/src/producer";
 import { restoreSnapshot } from "../packages/slack-snapshot/src/restore";
 import {
   mysqlLogicalDump,
+  runLaunchctl,
   runSlackServiceCommand,
   withDirectoryLock,
 } from "../packages/slack-snapshot/src/runtime";
@@ -55,7 +61,9 @@ const loadEnvironment = (): z.infer<typeof environmentSchema> =>
 
 const usage = (): void => {
   process.stdout.write(
-    "Usage: slack-snapshot-agent create\n       slack-snapshot-agent restore <bundle-id> <destination>\n",
+    "Usage: slack-snapshot-agent create\n" +
+      "       slack-snapshot-agent restore <bundle-id> <destination>\n" +
+      "       slack-snapshot-agent install|status|uninstall\n",
   );
 };
 
@@ -65,13 +73,36 @@ const main = async (): Promise<void> => {
     usage();
     return;
   }
+  const noArgumentCommands = ["create", "install", "status", "uninstall"];
   if (
-    (command !== "create" && command !== "restore") ||
-    (command === "create" && process.argv.length !== 3) ||
-    (command === "restore" && process.argv.length !== 5)
+    !(
+      (command !== undefined &&
+        noArgumentCommands.includes(command) &&
+        process.argv.length === 3) ||
+      (command === "restore" && process.argv.length === 5)
+    )
   ) {
     usage();
     throw new Error("expected create or restore with exact arguments");
+  }
+  if (command === "install" || command === "status" || command === "uninstall") {
+    const uid = process.getuid?.();
+    if (uid === undefined) {
+      throw new Error("launchd integration requires a numeric user id");
+    }
+    const base = { home, runLaunchctl, uid };
+    const result =
+      command === "install"
+        ? await installSlackSnapshotLaunchd({
+            ...base,
+            agentExecutable: z.string().min(1).parse(process.env.MYNAS_SNAPSHOT_AGENT_EXECUTABLE),
+            keychainHelper: z.string().min(1).parse(process.env.MYNAS_SNAPSHOT_KEYCHAIN_HELPER),
+          })
+        : command === "status"
+          ? await slackSnapshotLaunchdStatus(base)
+          : await uninstallSlackSnapshotLaunchd(base);
+    process.stdout.write(`${JSON.stringify(result)}\n`);
+    return;
   }
   const environment = loadEnvironment();
 

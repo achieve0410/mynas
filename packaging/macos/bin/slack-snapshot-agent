@@ -1,0 +1,16 @@
+#!/bin/sh
+set -eu
+
+SELF=$0
+while [ -L "$SELF" ]; do
+  TARGET=$(readlink "$SELF")
+  case "$TARGET" in
+    /*) SELF=$TARGET ;;
+    *) SELF=$(dirname "$SELF")/$TARGET ;;
+  esac
+done
+ROOT=$(CDPATH= cd -- "$(dirname -- "$SELF")/.." && pwd)
+
+export MYNAS_SNAPSHOT_AGENT_EXECUTABLE="$ROOT/bin/slack-snapshot-agent"
+export MYNAS_SNAPSHOT_KEYCHAIN_HELPER="$ROOT/bin/mynas-keychain-helper"
+exec "$ROOT/bin/bun" "$ROOT/lib/mynas/slack-snapshot-agent.js" "$@"

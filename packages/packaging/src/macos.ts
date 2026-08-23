@@ -33,10 +33,13 @@ export type AssembleMacosBundleOptions = {
   readonly destinationRoot: string;
   readonly gplLicensePath: string;
   readonly installerPath: string;
+  readonly keychainHelperPath: string;
   readonly lgplLicensePath: string;
   readonly licensePath: string;
   readonly libvipsNoticePath: string;
   readonly readmePath: string;
+  readonly snapshotAgentBundlePath: string;
+  readonly snapshotAgentWrapperPath: string;
   readonly version: string;
   readonly webRoot: string;
   readonly wrapperPath: string;
@@ -75,10 +78,16 @@ export const assembleMacosBundle = async (options: AssembleMacosBundleOptions): 
     cp(options.bunLicensePath, join(bundleRoot, "BUN-LICENSE.md")),
     cp(options.gplLicensePath, join(bundleRoot, "GPL-3.0.txt")),
     cp(options.installerPath, join(bundleRoot, "install")),
+    cp(options.keychainHelperPath, join(bundleRoot, "bin", "mynas-keychain-helper")),
     cp(options.lgplLicensePath, join(bundleRoot, "LGPL-3.0.txt")),
     cp(options.licensePath, join(bundleRoot, "LICENSE")),
     cp(options.libvipsNoticePath, join(bundleRoot, "LIBVIPS-NOTICE.md")),
     cp(options.readmePath, join(bundleRoot, "README.md")),
+    cp(
+      options.snapshotAgentBundlePath,
+      join(bundleRoot, "lib", "mynas", "slack-snapshot-agent.js"),
+    ),
+    cp(options.snapshotAgentWrapperPath, join(bundleRoot, "bin", "slack-snapshot-agent")),
     cp(options.wrapperPath, join(bundleRoot, "bin", "mynas")),
     cp(options.webRoot, join(bundleRoot, "share", "mynas", "web"), { recursive: true }),
     ...macosRuntimePackages.map((packagePath) =>
@@ -90,7 +99,13 @@ export const assembleMacosBundle = async (options: AssembleMacosBundleOptions): 
   await writeFile(join(bundleRoot, "VERSION"), `${options.version}\n`);
   await normalizeModes(bundleRoot);
   await Promise.all(
-    ["bin/bun", "bin/mynas", "install"].map((path) => chmod(join(bundleRoot, path), 0o755)),
+    [
+      "bin/bun",
+      "bin/mynas",
+      "bin/mynas-keychain-helper",
+      "bin/slack-snapshot-agent",
+      "install",
+    ].map((path) => chmod(join(bundleRoot, path), 0o755)),
   );
   return bundleRoot;
 };

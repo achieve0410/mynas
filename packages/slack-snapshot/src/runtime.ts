@@ -1,6 +1,8 @@
 import { mkdir, rm } from "node:fs/promises";
 import { dirname } from "node:path";
 
+import type { LaunchctlRunner } from "./launchd";
+
 const readStderr = async (stream: ReadableStream<Uint8Array>): Promise<string> =>
   new Response(stream).text();
 
@@ -49,6 +51,19 @@ export const runSlackServiceCommand = async (
   if (exitCode !== 0) {
     throw new Error(`Slack service ${command} failed with exit code ${exitCode}`);
   }
+};
+
+export const runLaunchctl: LaunchctlRunner = async (arguments_) => {
+  const process = Bun.spawn(["/bin/launchctl", ...arguments_], {
+    stderr: "pipe",
+    stdout: "pipe",
+  });
+  const [exitCode, stderr, stdout] = await Promise.all([
+    process.exited,
+    new Response(process.stderr).text(),
+    new Response(process.stdout).text(),
+  ]);
+  return { exitCode, stderr, stdout };
 };
 
 export const withDirectoryLock = async <Result>(

@@ -9,6 +9,8 @@ const packageSchema = z.object({ version: z.string().regex(/^\d+\.\d+\.\d+$/) })
 const repositoryRoot = resolve(import.meta.dir, "..");
 const distributionRoot = join(repositoryRoot, "dist");
 const appBundlePath = join(distributionRoot, "mynas-main.js");
+const snapshotAgentBundlePath = join(distributionRoot, "slack-snapshot-agent.js");
+const keychainHelperPath = join(distributionRoot, "mynas-keychain-helper");
 const archivePath = join(distributionRoot, "mynas-darwin-arm64.tar.gz");
 
 const run = async (arguments_: readonly string[]): Promise<void> => {
@@ -49,6 +51,16 @@ await run([
   "--outfile",
   appBundlePath,
 ]);
+await run([
+  "bun",
+  "build",
+  "--target=bun",
+  "--minify",
+  "scripts/slack-snapshot-agent.ts",
+  "--outfile",
+  snapshotAgentBundlePath,
+]);
+await run(["swiftc", "packaging/macos/mynas-keychain-helper.swift", "-o", keychainHelperPath]);
 const bundleRoot = await assembleMacosBundle({
   appBundlePath,
   bunExecutablePath: process.execPath,
@@ -57,10 +69,19 @@ const bundleRoot = await assembleMacosBundle({
   destinationRoot: distributionRoot,
   gplLicensePath: join(repositoryRoot, "packaging", "macos", "GPL-3.0.txt"),
   installerPath: join(repositoryRoot, "packaging", "macos", "install"),
+  keychainHelperPath,
   lgplLicensePath: join(repositoryRoot, "packaging", "macos", "LGPL-3.0.txt"),
   licensePath: join(repositoryRoot, "LICENSE"),
   libvipsNoticePath: join(repositoryRoot, "packaging", "macos", "LIBVIPS-NOTICE.md"),
   readmePath: join(repositoryRoot, "README.md"),
+  snapshotAgentBundlePath,
+  snapshotAgentWrapperPath: join(
+    repositoryRoot,
+    "packaging",
+    "macos",
+    "bin",
+    "slack-snapshot-agent",
+  ),
   version,
   webRoot: join(repositoryRoot, "apps", "web", "dist"),
   wrapperPath: join(repositoryRoot, "packaging", "macos", "bin", "mynas"),
@@ -81,6 +102,10 @@ const digest = new Bun.CryptoHasher("sha256")
   .digest("hex");
 const checksumPath = `${archivePath}.sha256`;
 await writeFile(checksumPath, `${digest}  ${archivePath.split("/").at(-1)}\n`);
-await rm(appBundlePath, { force: true });
+await Promise.all([
+  rm(appBundlePath, { force: true }),
+  rm(snapshotAgentBundlePath, { force: true }),
+  rm(keychainHelperPath, { force: true }),
+]);
 
 console.log(JSON.stringify({ archivePath, bundleRoot, checksumPath, sha256: digest, version }));
