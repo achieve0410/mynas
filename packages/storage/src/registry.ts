@@ -12,6 +12,7 @@ import {
   type S3BackendRegistryConfig,
 } from "./backend-factory";
 import { FileCatalog } from "./catalog";
+import { LocalDirectoryBackend } from "./local";
 import { MirrorVolume } from "./mirror";
 
 export type { BackendConfig, LocalBackendConfig, S3BackendRegistryConfig };
@@ -28,6 +29,7 @@ type VolumeRow = {
 };
 
 export type VolumeHealth = {
+  readonly reasons: Readonly<Record<string, string>>;
   readonly status: "degraded" | "healthy";
   readonly unavailable: readonly string[];
 };
@@ -122,12 +124,22 @@ export class StorageRegistry {
     if (row === null) {
       throw new RegistryError("not_found", "backend not found");
     }
-    const config = backendConfigSchema.parse(JSON.parse(row.config_json));
+    let config = backendConfigSchema.parse(JSON.parse(row.config_json));
     let backend: StorageBackend;
     try {
       backend = await createStorageBackend(config, this.environment);
     } catch (error) {
       throw registryBackendError(error);
+    }
+    if (
+      config.kind === "local" &&
+      backend instanceof LocalDirectoryBackend &&
+      config.filesystemIdentity !== backend.filesystemIdentity
+    ) {
+      config = { ...config, filesystemIdentity: backend.filesystemIdentity };
+      this.database
+        .query("UPDATE storage_backends SET config_json = ? WHERE id = ?")
+        .run(JSON.stringify(config), config.id);
     }
     this.backends.set(id, backend);
     return backend;
@@ -174,7 +186,14 @@ export class StorageRegistry {
     const memberIds = membersSchema.parse(JSON.parse(row.members_json));
     const probes = await Promise.all(memberIds.map((memberId) => this.probeBackend(memberId)));
     const unavailable = memberIds.filter((_, index) => probes[index]?.status !== "healthy");
+    const reasons = Object.fromEntries(
+      memberIds.flatMap((memberId, index) => {
+        const probe = probes[index];
+        return probe?.status === "unavailable" ? [[memberId, probe.reason] as const] : [];
+      }),
+    );
     return {
+      reasons,
       status: unavailable.length === 0 ? "healthy" : "degraded",
       unavailable,
     };

@@ -288,6 +288,10 @@ describe("backend, mirror volume, and file API", () => {
       headers: { authorization: `Bearer ${token}` },
     });
     expect(volume.status).toBe(200);
-    expect(await volume.json()).toEqual({ status: "degraded", unavailable: ["disk-b"] });
+    expect(await volume.json()).toEqual({
+      reasons: { "disk-b": expect.stringContaining("No such file or directory") },
+      status: "degraded",
+      unavailable: ["disk-b"],
+    });
   });
 });

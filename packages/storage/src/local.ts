@@ -1,17 +1,8 @@
-import {
-  stat as fileStat,
-  lstat,
-  mkdir,
-  open,
-  readFile,
-  realpath,
-  rename,
-  rm,
-} from "node:fs/promises";
+import { lstat, mkdir, open, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, sep } from "node:path";
 
 import type { BackendHealth, ByteRange, StorageBackend, StoredObject } from "./adapter";
-import { filesystemIdentity, localBackendHealth } from "./local-health";
+import { inspectLocalRoot, localBackendHealth } from "./local-health";
 
 export type LocalStorageErrorCode =
   | "backend_unavailable"
@@ -63,19 +54,46 @@ export class LocalDirectoryBackend implements StorageBackend {
     return `local:${this.rootIdentity}`;
   }
 
+  public get filesystemIdentity(): string {
+    if (this.rootIdentity === null) {
+      throw new LocalStorageError("backend_unavailable", "backend is not initialized");
+    }
+    return this.rootIdentity;
+  }
+
   public async initialize(): Promise<void> {
-    const rootInfo = await lstat(this.configuredRoot);
-    if (rootInfo.isSymbolicLink()) {
+    let inspection = await inspectLocalRoot(this.configuredRoot);
+    if (inspection.status === "unavailable") {
+      if (inspection.reason === "backend root cannot be a symlink") {
+        throw new LocalStorageError("symlink_rejected", inspection.reason);
+      }
+      throw new LocalStorageError("backend_unavailable", inspection.reason);
+    }
+    const legacyIdentityMatches =
+      this.expectedIdentity === undefined ||
+      this.expectedIdentity === inspection.filesystemIdentity;
+    if (!inspection.filesystemIdentity.startsWith("marker:") && legacyIdentityMatches) {
+      const markerPath = join(inspection.canonicalRoot, ".mynas-storage-id");
+      try {
+        await writeFile(markerPath, crypto.randomUUID(), { flag: "wx", mode: 0o600 });
+      } catch (error) {
+        if (!isNodeError(error) || error.code !== "EEXIST") {
+          throw error;
+        }
+      }
+      inspection = await inspectLocalRoot(this.configuredRoot);
+      if (inspection.status === "unavailable") {
+        throw new LocalStorageError("backend_unavailable", inspection.reason);
+      }
+    }
+    if (inspection.canonicalRoot.length === 0) {
       throw new LocalStorageError("symlink_rejected", "backend root cannot be a symlink");
     }
-    if (!rootInfo.isDirectory()) {
-      throw new LocalStorageError("backend_unavailable", "backend root is not a directory");
-    }
-
-    this.canonicalRoot = await realpath(this.configuredRoot);
-    const canonicalInfo = await fileStat(this.canonicalRoot);
+    this.canonicalRoot = inspection.canonicalRoot;
     this.rootIdentity =
-      this.expectedIdentity ?? filesystemIdentity(canonicalInfo.dev, canonicalInfo.ino);
+      this.expectedIdentity?.startsWith("marker:") === true || !legacyIdentityMatches
+        ? (this.expectedIdentity ?? inspection.filesystemIdentity)
+        : inspection.filesystemIdentity;
   }
 
   public async delete(key: string): Promise<void> {
@@ -114,24 +132,17 @@ export class LocalDirectoryBackend implements StorageBackend {
     if (this.canonicalRoot === null || this.rootIdentity === null) {
       return { reason: "backend is not initialized", status: "unavailable" };
     }
-    try {
-      const configuredInfo = await lstat(this.configuredRoot);
-      if (configuredInfo.isSymbolicLink() || !configuredInfo.isDirectory()) {
-        return { reason: "backend root changed type", status: "unavailable" };
-      }
-      const currentRoot = await realpath(this.configuredRoot);
-      const currentInfo = await fileStat(currentRoot);
-      const currentIdentity = filesystemIdentity(currentInfo.dev, currentInfo.ino);
-      if (currentRoot !== this.canonicalRoot || currentIdentity !== this.rootIdentity) {
-        return { reason: "backend filesystem identity changed", status: "unavailable" };
-      }
-      return localBackendHealth(currentRoot, currentIdentity);
-    } catch (error) {
-      if (isNodeError(error) && (error.code === "ENOENT" || error.code === "ENOTDIR")) {
-        return { reason: "backend root is unavailable", status: "unavailable" };
-      }
-      throw error;
+    const inspection = await inspectLocalRoot(this.configuredRoot);
+    if (inspection.status === "unavailable") {
+      return inspection;
     }
+    if (
+      inspection.canonicalRoot !== this.canonicalRoot ||
+      inspection.filesystemIdentity !== this.rootIdentity
+    ) {
+      return { reason: "backend filesystem identity changed", status: "unavailable" };
+    }
+    return localBackendHealth(inspection);
   }
 
   public async put(key: string, contents: Uint8Array): Promise<StoredObject> {

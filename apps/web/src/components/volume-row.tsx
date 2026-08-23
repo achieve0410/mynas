@@ -17,10 +17,11 @@ export const VolumeRow = ({ volume }: { readonly volume: Volume }) => {
     onSuccess: (report) => {
       const corrupt = typeof report.corrupt === "number" ? report.corrupt : 0;
       const missing = typeof report.missing === "number" ? report.missing : 0;
+      const unavailable = typeof report.unavailable === "number" ? report.unavailable : 0;
       const unrecoverable = typeof report.unrecoverable === "number" ? report.unrecoverable : 0;
-      setOperationWarning(unrecoverable > 0);
+      setOperationWarning(unavailable > 0 || unrecoverable > 0);
       setMessage(
-        `Scrub completed: ${corrupt} corrupt, ${missing} missing, ${unrecoverable} unrecoverable.`,
+        `Scrub completed: ${corrupt} corrupt, ${missing} missing, ${unavailable} unavailable, ${unrecoverable} unrecoverable.`,
       );
     },
   });
@@ -43,7 +44,12 @@ export const VolumeRow = ({ volume }: { readonly volume: Volume }) => {
         <strong>{volume.id}</strong>
         <small>{volume.members.join(" + ")}</small>
         {health.data?.unavailable.length ? (
-          <small className="danger-text">Unavailable: {health.data.unavailable.join(", ")}</small>
+          <small className="danger-text">
+            Unavailable:{" "}
+            {health.data.unavailable
+              .map((id) => `${id}${health.data.reasons[id] ? ` (${health.data.reasons[id]})` : ""}`)
+              .join(", ")}
+          </small>
         ) : null}
         <small className={operationWarning ? "danger-text" : undefined}>
           {message ?? "Last scrub: not run in this session"}

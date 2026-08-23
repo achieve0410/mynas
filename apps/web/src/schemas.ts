@@ -29,6 +29,7 @@ export const volumeSchema = z
   .passthrough();
 export const volumesSchema = z.array(volumeSchema);
 export const volumeHealthSchema = z.object({
+  reasons: z.record(z.string(), z.string()),
   status: z.enum(["degraded", "healthy"]),
   unavailable: z.array(z.string()),
 });

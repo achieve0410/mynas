@@ -1,6 +1,6 @@
 import { Database } from "bun:sqlite";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, rename, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rename, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -36,6 +36,50 @@ describe("StorageRegistry persistence", () => {
     const health = await (await restarted.getBackend("disk")).probe();
 
     expect(health.status).toBe("unavailable");
+  });
+
+  test("persists the stable disk marker identity", async () => {
+    const registry = new StorageRegistry(database, {});
+    const health = await registry.addBackend({ id: "disk", kind: "local", root });
+    const persisted = database
+      .query<{ readonly config_json: string }, [string]>(
+        "SELECT config_json FROM storage_backends WHERE id = ?",
+      )
+      .get("disk");
+
+    expect(health.status).toBe("healthy");
+    expect(persisted?.config_json).toContain('"filesystemIdentity":"marker:');
+  });
+
+  test("upgrades a matching legacy device identity to the disk marker", async () => {
+    const rootInfo = await stat(root);
+    const legacyIdentity = `${rootInfo.dev}:${rootInfo.ino}`;
+    database
+      .query(
+        "INSERT INTO storage_backends (id, kind, config_json, created_at) VALUES (?, 'local', ?, ?)",
+      )
+      .run(
+        "disk",
+        JSON.stringify({
+          filesystemIdentity: legacyIdentity,
+          id: "disk",
+          kind: "local",
+          root,
+        }),
+        new Date(0).toISOString(),
+      );
+
+    const registry = new StorageRegistry(database, {});
+    const health = await (await registry.getBackend("disk")).probe();
+    const persisted = database
+      .query<{ readonly config_json: string }, [string]>(
+        "SELECT config_json FROM storage_backends WHERE id = ?",
+      )
+      .get("disk");
+
+    expect(health.status).toBe("healthy");
+    expect(persisted?.config_json).toContain('"filesystemIdentity":"marker:');
+    expect(persisted?.config_json).not.toContain(legacyIdentity);
   });
 
   test("rejects aliases of one physical target as mirror members", async () => {

@@ -19,7 +19,9 @@ export const useVolumeHealth = (volumeId: string) => {
     return { canWrite: false, health, reason: "Mirror health is unavailable. Writes are paused." };
   }
   if (health.data.status === "degraded") {
-    const members = health.data.unavailable.join(", ");
+    const members = health.data.unavailable
+      .map((id) => `${id}${health.data.reasons[id] ? ` (${health.data.reasons[id]})` : ""}`)
+      .join(", ");
     return {
       canWrite: false,
       health,

@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { LocalDirectoryBackend } from "./local";
+import { inspectLocalRoot } from "./local-health";
 
 const bytes = (value: string): Uint8Array => new TextEncoder().encode(value);
 const text = (value: Uint8Array): string => new TextDecoder().decode(value);
@@ -95,5 +96,74 @@ describe("LocalDirectoryBackend", () => {
     await expect(backend.put("blobs/refused.bin", bytes("no degraded writes"))).rejects.toThrow(
       "unavailable",
     );
+  });
+
+  test("terminates a blocked filesystem probe without exhausting the Bun worker pool", async () => {
+    const controller = new AbortController();
+    let killed = false;
+    let spawnCount = 0;
+    const pending = inspectLocalRoot(root, {
+      signal: controller.signal,
+      spawn: () => {
+        spawnCount += 1;
+        return {
+          exited: new Promise<number>(() => undefined),
+          kill: () => {
+            killed = true;
+          },
+          stderr: new ReadableStream<Uint8Array>(),
+          stdout: new ReadableStream<Uint8Array>(),
+        };
+      },
+    });
+
+    controller.abort();
+
+    expect(await pending).toEqual({
+      reason: "backend probe timed out; check macOS removable-volume access",
+      status: "unavailable",
+    });
+    expect(killed).toBe(true);
+    expect(spawnCount).toBe(4);
+  });
+
+  test("uses the disk marker instead of the remount-specific device number", async () => {
+    const inspectWithDevice = (device: string) =>
+      inspectLocalRoot(root, {
+        spawn: (arguments_) => {
+          const executable = arguments_[0];
+          const target = arguments_.at(-1);
+          const stdout =
+            executable === "/bin/realpath"
+              ? root
+              : executable === "/usr/bin/stat" && target === root
+                ? `${device}|381|Directory`
+                : executable === "/usr/bin/stat"
+                  ? "Regular File"
+                  : executable === "/bin/df"
+                    ? "Filesystem 1024-blocks Used Available Capacity Mounted on\n/dev/disk4s2 100 20 80 20% /Volumes/Test"
+                    : executable === "/bin/cat"
+                      ? "173dbf4e-71ef-4f83-b4f0-c47cc99a4990"
+                      : "blobs";
+          return {
+            exited: Promise.resolve(0),
+            kill: () => undefined,
+            stderr: new Blob([""]).stream(),
+            stdout: new Blob([stdout]).stream(),
+          };
+        },
+      });
+
+    const first = await inspectWithDevice("16777237");
+    const remounted = await inspectWithDevice("16777258");
+
+    expect(first).toMatchObject({
+      filesystemIdentity: "marker:173dbf4e-71ef-4f83-b4f0-c47cc99a4990",
+      status: "healthy",
+    });
+    expect(remounted).toMatchObject({
+      filesystemIdentity: "marker:173dbf4e-71ef-4f83-b4f0-c47cc99a4990",
+      status: "healthy",
+    });
   });
 });
