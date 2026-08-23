@@ -38,6 +38,21 @@ describe("LocalDirectoryBackend", () => {
     expect(await backend.stat("blobs/item.bin")).toBeNull();
   });
 
+  test("prunes only empty object directories after deletion", async () => {
+    const backend = new LocalDirectoryBackend("disk-a", root);
+    await backend.initialize();
+    await backend.put("snapshots/bundle/chunks/item.bin", bytes("chunk"));
+    await backend.put("snapshots/keep.bin", bytes("keep"));
+
+    await backend.delete("snapshots/bundle/chunks/item.bin");
+
+    expect(await readdir(join(root, "snapshots"))).toEqual(["keep.bin"]);
+
+    await backend.delete("snapshots/keep.bin");
+
+    expect(await readdir(root)).not.toContain("snapshots");
+  });
+
   test("atomically replaces objects with private file permissions", async () => {
     const backend = new LocalDirectoryBackend("disk-a", root);
     await backend.initialize();

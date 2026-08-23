@@ -1,4 +1,4 @@
-import { lstat, mkdir, open, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { lstat, mkdir, open, readFile, rename, rm, rmdir, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, sep } from "node:path";
 
 import type { BackendHealth, ByteRange, StorageBackend, StoredObject } from "./adapter";
@@ -102,11 +102,11 @@ export class LocalDirectoryBackend implements StorageBackend {
     try {
       await rm(objectPath);
     } catch (error) {
-      if (isNodeError(error) && error.code === "ENOENT") {
-        return;
+      if (!isNodeError(error) || error.code !== "ENOENT") {
+        throw error;
       }
-      throw error;
     }
+    await this.pruneEmptyParents(dirname(objectPath));
   }
 
   public async get(key: string, range?: ByteRange): Promise<Uint8Array> {
@@ -238,6 +238,26 @@ export class LocalDirectoryBackend implements StorageBackend {
         return;
       }
       throw error;
+    }
+  }
+
+  private async pruneEmptyParents(path: string): Promise<void> {
+    const root = this.requireInitializedRoot();
+    let current = path;
+    while (current !== root) {
+      try {
+        await rmdir(current);
+      } catch (error) {
+        if (isNodeError(error) && error.code === "ENOENT") {
+          current = dirname(current);
+          continue;
+        }
+        if (isNodeError(error) && (error.code === "ENOTEMPTY" || error.code === "EEXIST")) {
+          return;
+        }
+        throw error;
+      }
+      current = dirname(current);
     }
   }
 
