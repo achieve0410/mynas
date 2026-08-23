@@ -4,6 +4,32 @@ import { describe, expect, test } from "bun:test";
 import { migrate } from "./migrations";
 
 describe("migrate", () => {
+  test("refuses a catalog newer than this runtime without modifying it", () => {
+    const database = new Database(":memory:");
+    try {
+      database.exec(`
+        CREATE TABLE schema_migrations (
+          version INTEGER PRIMARY KEY,
+          applied_at TEXT NOT NULL
+        );
+        INSERT INTO schema_migrations (version, applied_at)
+        VALUES (11, '2026-08-23T00:00:00.000Z');
+      `);
+
+      expect(() => migrate(database)).toThrow("newer schema 11");
+      expect(
+        database
+          .query<{ readonly name: string }, []>(
+            "SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name",
+          )
+          .all()
+          .map(({ name }) => name),
+      ).toEqual(["schema_migrations"]);
+    } finally {
+      database.close();
+    }
+  });
+
   test("creates the complete schema and remains idempotent", () => {
     const database = new Database(":memory:");
     try {
@@ -25,6 +51,7 @@ describe("migrate", () => {
       expect(tables).toContain("photo_album_items");
       expect(tables).toContain("photo_jobs");
       expect(tables).toContain("photos");
+      expect(tables).toContain("protection_incidents");
       expect(tables).toContain("schema_migrations");
       expect(tables).toContain("sessions");
       expect(tables).toContain("snapshot_bundle_chunks");
@@ -38,7 +65,20 @@ describe("migrate", () => {
             "SELECT version FROM schema_migrations ORDER BY version DESC LIMIT 1",
           )
           .get(),
-      ).toEqual({ version: 8 });
+      ).toEqual({ version: 10 });
+      expect(
+        database
+          .query<{ readonly name: string }, []>("SELECT name FROM pragma_table_info('photos')")
+          .all()
+          .map(({ name }) => name),
+      ).toEqual(
+        expect.arrayContaining([
+          "latitude",
+          "longitude",
+          "metadata_claimed_at",
+          "metadata_version",
+        ]),
+      );
       expect(
         database
           .query<{ readonly table: string }, []>(
@@ -60,6 +100,28 @@ describe("migrate", () => {
           )
           .get()?.sql,
       ).toContain("'heic'");
+      expect(() =>
+        database
+          .query(
+            `INSERT INTO photos (
+              id, checksum, filename, format, width, height, captured_at, imported_at,
+              original_path, preview_path, latitude
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          )
+          .run(
+            "invalid-location",
+            "b".repeat(64),
+            "invalid.jpg",
+            "jpeg",
+            4,
+            3,
+            "2026-01-02T03:04:05.000Z",
+            "2026-01-02T03:04:05.000Z",
+            "photos/originals/invalid.jpg",
+            "photos/previews/invalid.webp",
+            37.5,
+          ),
+      ).toThrow();
     } finally {
       database.close();
     }
@@ -93,11 +155,35 @@ describe("migrate", () => {
 
       expect(
         database
-          .query<{ readonly filename: string; readonly format: string }, []>(
-            "SELECT filename, format FROM photos",
+          .query<
+            {
+              readonly filename: string;
+              readonly format: string;
+              readonly latitude: number | null;
+              readonly longitude: number | null;
+              readonly metadataClaimedAt: string | null;
+              readonly metadataVersion: number;
+            },
+            []
+          >(
+            `SELECT
+              filename,
+              format,
+              latitude,
+              longitude,
+              metadata_claimed_at AS metadataClaimedAt,
+              metadata_version AS metadataVersion
+            FROM photos`,
           )
           .get(),
-      ).toEqual({ filename: "existing.jpg", format: "jpeg" });
+      ).toEqual({
+        filename: "existing.jpg",
+        format: "jpeg",
+        latitude: null,
+        longitude: null,
+        metadataClaimedAt: null,
+        metadataVersion: 0,
+      });
       expect(
         database
           .query<{ readonly sql: string }, []>(

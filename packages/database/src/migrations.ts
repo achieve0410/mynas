@@ -1,8 +1,9 @@
 import type { Database } from "bun:sqlite";
-
-export const CURRENT_SCHEMA_VERSION = 8;
-
+import { assertCatalogSchemaSupported } from "./catalog-schema";
+import { migratePhotoMetadata, photoTableSql } from "./photo-metadata-migration";
+export const CURRENT_SCHEMA_VERSION = 10;
 export const migrate = (database: Database): void => {
+  assertCatalogSchemaSupported(database, CURRENT_SCHEMA_VERSION);
   database.exec(`
     PRAGMA foreign_keys = ON;
 
@@ -76,18 +77,7 @@ export const migrate = (database: Database): void => {
       created_at TEXT NOT NULL
     );
 
-    CREATE TABLE IF NOT EXISTS photos (
-      id TEXT PRIMARY KEY,
-      checksum TEXT NOT NULL UNIQUE,
-      filename TEXT NOT NULL,
-      format TEXT NOT NULL CHECK (format IN ('jpeg', 'png', 'heic')),
-      width INTEGER NOT NULL CHECK (width > 0),
-      height INTEGER NOT NULL CHECK (height > 0),
-      captured_at TEXT NOT NULL,
-      imported_at TEXT NOT NULL,
-      original_path TEXT NOT NULL UNIQUE,
-      preview_path TEXT NOT NULL UNIQUE
-    );
+    ${photoTableSql("photos", true)};
 
     CREATE INDEX IF NOT EXISTS photos_timeline_idx
       ON photos (captured_at DESC, imported_at DESC);
@@ -151,6 +141,26 @@ export const migrate = (database: Database): void => {
 
     CREATE INDEX IF NOT EXISTS maintenance_runs_kind_time_idx
       ON maintenance_runs (kind, started_at DESC);
+
+    CREATE TABLE IF NOT EXISTS protection_incidents (
+      sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+      id TEXT NOT NULL UNIQUE,
+      kind TEXT NOT NULL CHECK (kind IN ('catalog_backup_failed', 'volume_scrub_failed')),
+      resource_key TEXT NOT NULL CHECK (length(resource_key) BETWEEN 1 AND 200),
+      first_seen_at TEXT NOT NULL,
+      last_seen_at TEXT NOT NULL,
+      occurrence_count INTEGER NOT NULL CHECK (occurrence_count >= 1),
+      resolved_at TEXT,
+      CHECK (last_seen_at >= first_seen_at),
+      CHECK (resolved_at IS NULL OR resolved_at >= last_seen_at)
+    );
+
+    CREATE UNIQUE INDEX IF NOT EXISTS protection_incidents_active_idx
+      ON protection_incidents (kind, resource_key)
+      WHERE resolved_at IS NULL;
+
+    CREATE INDEX IF NOT EXISTS protection_incidents_time_idx
+      ON protection_incidents (last_seen_at DESC, sequence DESC);
 
     CREATE TABLE IF NOT EXISTS activity_events (
       sequence INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -234,40 +244,7 @@ export const migrate = (database: Database): void => {
     );
   `);
 
-  const photoTableSql = database
-    .query<{ readonly sql: string }, []>(
-      "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'photos'",
-    )
-    .get()?.sql;
-  if (photoTableSql?.includes("CHECK (format = 'jpeg')") === true) {
-    database.exec(`
-      PRAGMA foreign_keys = OFF;
-      BEGIN IMMEDIATE;
-      CREATE TABLE photos_v6 (
-        id TEXT PRIMARY KEY,
-        checksum TEXT NOT NULL UNIQUE,
-        filename TEXT NOT NULL,
-        format TEXT NOT NULL CHECK (format IN ('jpeg', 'png', 'heic')),
-        width INTEGER NOT NULL CHECK (width > 0),
-        height INTEGER NOT NULL CHECK (height > 0),
-        captured_at TEXT NOT NULL,
-        imported_at TEXT NOT NULL,
-        original_path TEXT NOT NULL UNIQUE,
-        preview_path TEXT NOT NULL UNIQUE
-      );
-      INSERT INTO photos_v6
-      SELECT id, checksum, filename, format, width, height, captured_at, imported_at,
-             original_path, preview_path
-      FROM photos;
-      DROP TABLE photos;
-      ALTER TABLE photos_v6 RENAME TO photos;
-      CREATE INDEX photos_timeline_idx
-        ON photos (captured_at DESC, imported_at DESC);
-      COMMIT;
-      PRAGMA foreign_keys = ON;
-    `);
-  }
-
+  migratePhotoMetadata(database);
   database
     .query("INSERT OR IGNORE INTO schema_migrations (version, applied_at) VALUES (?, ?)")
     .run(CURRENT_SCHEMA_VERSION, new Date().toISOString());
