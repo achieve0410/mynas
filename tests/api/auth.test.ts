@@ -185,6 +185,78 @@ describe("owner authentication API", () => {
     expect(persisted).not.toContain(apiToken.token);
   });
 
+  test("changes the owner password and revokes all browser sessions", async () => {
+    const setup = await app.request("/api/v1/setup", {
+      body: JSON.stringify({
+        password: "synthetic owner passphrase",
+        username: "owner",
+      }),
+      headers: { "content-type": "application/json" },
+      method: "POST",
+    });
+    expect(setup.status).toBe(201);
+
+    const firstLogin = await app.request("/api/v1/login", {
+      body: JSON.stringify({ password: "synthetic owner passphrase", username: "owner" }),
+      headers: { "content-type": "application/json" },
+      method: "POST",
+    });
+    const firstSession = loginSchema.parse(await firstLogin.json());
+    const secondLogin = await app.request("/api/v1/login", {
+      body: JSON.stringify({ password: "synthetic owner passphrase", username: "owner" }),
+      headers: { "content-type": "application/json" },
+      method: "POST",
+    });
+    const secondSession = loginSchema.parse(await secondLogin.json());
+
+    const wrongCurrentPassword = await app.request("/api/v1/password", {
+      body: JSON.stringify({
+        currentPassword: "wrong current password",
+        newPassword: "new synthetic owner phrase",
+      }),
+      headers: {
+        authorization: `Bearer ${firstSession.token}`,
+        "content-type": "application/json",
+      },
+      method: "PUT",
+    });
+    expect(wrongCurrentPassword.status).toBe(401);
+
+    const changed = await app.request("/api/v1/password", {
+      body: JSON.stringify({
+        currentPassword: "synthetic owner passphrase",
+        newPassword: "new synthetic owner phrase",
+      }),
+      headers: {
+        authorization: `Bearer ${firstSession.token}`,
+        "content-type": "application/json",
+      },
+      method: "PUT",
+    });
+    expect(changed.status).toBe(204);
+
+    for (const session of [firstSession, secondSession]) {
+      const revoked = await app.request("/api/v1/system/status", {
+        headers: { authorization: `Bearer ${session.token}` },
+      });
+      expect(revoked.status).toBe(401);
+    }
+
+    const oldPassword = await app.request("/api/v1/login", {
+      body: JSON.stringify({ password: "synthetic owner passphrase", username: "owner" }),
+      headers: { "content-type": "application/json" },
+      method: "POST",
+    });
+    expect(oldPassword.status).toBe(401);
+
+    const newPassword = await app.request("/api/v1/login", {
+      body: JSON.stringify({ password: "new synthetic owner phrase", username: "owner" }),
+      headers: { "content-type": "application/json" },
+      method: "POST",
+    });
+    expect(newPassword.status).toBe(200);
+  });
+
   test("rejects initial setup from a non-loopback peer", async () => {
     const remote = createApp({
       dataDir,

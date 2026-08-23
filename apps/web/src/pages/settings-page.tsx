@@ -5,6 +5,7 @@ import { type FormEvent, useState } from "react";
 import { MYNAS_VERSION } from "../../../../packages/version/src/version";
 import { api } from "../api";
 import { MaintenanceSettings } from "../components/maintenance-settings";
+import { PasswordSettings } from "../components/password-settings";
 
 export const SettingsPage = () => {
   const queryClient = useQueryClient();
@@ -59,6 +60,7 @@ export const SettingsPage = () => {
         </dl>
       </section>
       <MaintenanceSettings />
+      <PasswordSettings />
       <section className="settings-section">
         <div className="settings-heading">
           <span className="row-icon">

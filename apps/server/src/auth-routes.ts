@@ -14,6 +14,11 @@ const tokenSchema = z.object({
   name: z.string().min(1),
 });
 
+const passwordChangeSchema = z.object({
+  currentPassword: z.string().min(1),
+  newPassword: z.string().min(12),
+});
+
 const isLoopbackRequestHost = (value: string): boolean => {
   try {
     const hostname = new URL(`http://${value}`).hostname.toLowerCase();
@@ -120,6 +125,16 @@ export const registerProtectedAuthRoutes = (app: AppInstance, services: AppServi
   app.get("/api/v1/system/status", (context) =>
     context.json({ setupComplete: true, version: MYNAS_VERSION }),
   );
+
+  app.put("/api/v1/password", async (context) => {
+    const body = passwordChangeSchema.parse(await context.req.json());
+    await services.auth.changePassword(
+      context.get("user").id,
+      body.currentPassword,
+      body.newPassword,
+    );
+    return context.body(null, 204);
+  });
 
   app.post("/api/v1/logout", (context) => {
     const token = bearerToken(context.req.header("authorization"));

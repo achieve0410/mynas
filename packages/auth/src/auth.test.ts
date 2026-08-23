@@ -74,6 +74,37 @@ describe("AuthService", () => {
     expect(() => service.authenticateSession(session.token)).toThrow("expired");
   });
 
+  test("changes the owner password and revokes every browser session", async () => {
+    const service = new AuthService(database, () => now);
+    const user = await service.setupOwner("owner", "correct horse battery staple", "127.0.0.1");
+    const firstSession = await service.login("owner", "correct horse battery staple", "127.0.0.1");
+    const secondSession = await service.login("owner", "correct horse battery staple", "127.0.0.1");
+    const apiToken = service.createApiToken(user.id, "automation");
+
+    await expect(
+      service.changePassword(user.id, "wrong current password", "new correct horse phrase"),
+    ).rejects.toThrow("current password is invalid");
+    await expect(
+      service.changePassword(user.id, "correct horse battery staple", "too short"),
+    ).rejects.toThrow("at least 12 characters");
+
+    await service.changePassword(
+      user.id,
+      "correct horse battery staple",
+      "new correct horse phrase",
+    );
+
+    expect(() => service.authenticateSession(firstSession.token)).toThrow("revoked");
+    expect(() => service.authenticateSession(secondSession.token)).toThrow("revoked");
+    expect(service.authenticateApiToken(apiToken.token)).toEqual(user);
+    await expect(
+      service.login("owner", "correct horse battery staple", "127.0.0.1"),
+    ).rejects.toThrow("invalid");
+    await expect(service.login("owner", "new correct horse phrase", "127.0.0.1")).resolves.toEqual(
+      expect.objectContaining({ user }),
+    );
+  });
+
   test("creates, authenticates, and revokes a hashed API token", async () => {
     const service = new AuthService(database, () => now);
     const user = await service.setupOwner("owner", "correct horse battery staple", "127.0.0.1");

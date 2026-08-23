@@ -68,7 +68,7 @@ const request = async (path: string, init: RequestInit = {}): Promise<Response> 
   const response = await fetch(path, { ...init, headers });
   if (!response.ok) {
     const message = await messageFor(response);
-    if (response.status === 401 && token !== null) {
+    if (response.status === 401 && token !== null && sessionToken() === token) {
       window.localStorage.removeItem(SESSION_KEY);
       window.sessionStorage.setItem(RETURN_TO_KEY, window.location.pathname);
       window.location.assign("/login");
@@ -164,6 +164,28 @@ export const api = {
       method: "POST",
     }),
   logout: () => request("/api/v1/logout", { method: "POST" }),
+  changePassword: async (currentPassword: string, newPassword: string) => {
+    const token = sessionToken();
+    if (token === null) {
+      throw new ApiError(401, "authentication required");
+    }
+    window.localStorage.removeItem(SESSION_KEY);
+    try {
+      return await request("/api/v1/password", {
+        body: JSON.stringify({ currentPassword, newPassword }),
+        headers: {
+          authorization: `Bearer ${token}`,
+          "content-type": "application/json",
+        },
+        method: "PUT",
+      });
+    } catch (error) {
+      if (sessionToken() === null) {
+        window.localStorage.setItem(SESSION_KEY, token);
+      }
+      throw error;
+    }
+  },
   repair: (volumeId: string) =>
     json(`/api/v1/volumes/${encodeURIComponent(volumeId)}/repair`, repairReportSchema, {
       method: "POST",

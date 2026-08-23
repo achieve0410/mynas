@@ -163,6 +163,36 @@ export class AuthService {
     return toUser(row);
   }
 
+  public async changePassword(
+    userId: string,
+    currentPassword: string,
+    newPassword: string,
+  ): Promise<void> {
+    requirePassword(newPassword);
+    const row = this.database
+      .query<UserRow, [string]>("SELECT id, username, password_hash FROM users WHERE id = ?")
+      .get(userId);
+    if (row === null || !(await Bun.password.verify(currentPassword, row.password_hash))) {
+      throw new AuthError("authentication_failed", "current password is invalid");
+    }
+    const passwordHash = await Bun.password.hash(newPassword, "argon2id");
+    const changedAt = this.now().toISOString();
+
+    this.database.exec("BEGIN IMMEDIATE");
+    try {
+      this.database
+        .query("UPDATE users SET password_hash = ? WHERE id = ?")
+        .run(passwordHash, userId);
+      this.database
+        .query("UPDATE sessions SET revoked_at = ? WHERE user_id = ? AND revoked_at IS NULL")
+        .run(changedAt, userId);
+      this.database.exec("COMMIT");
+    } catch (error) {
+      this.database.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
   public authenticateSession(token: string): User {
     const row = this.database
       .query<SessionRow, [string]>(
