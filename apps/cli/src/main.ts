@@ -1,8 +1,9 @@
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 
-import { backupCatalog, restoreCatalog } from "../../../packages/database/src/catalog-backup";
+import { backupCatalog } from "../../../packages/database/src/catalog-backup";
 import { bootstrapLocal } from "../../../packages/onboarding/src/bootstrap";
+import { restoreCatalogWithOwner } from "../../../packages/onboarding/src/catalog-restore";
 import { startServer } from "../../server/src/server";
 import { runCli } from "./cli";
 import { LaunchdServiceManager } from "./service";
@@ -53,39 +54,48 @@ const exitCode = await runCli(process.argv.slice(2), {
   remove: async (path) => rm(path, { force: true, recursive: true }),
   rename,
   serve: async (options) => {
-    const running = await startServer({
-      ...options,
-      environment: process.env,
+    let running: Awaited<ReturnType<typeof startServer>> | undefined;
+    let stopping = false;
+    let resolveStopped: (() => void) | undefined;
+    let rejectStopped: ((error: unknown) => void) | undefined;
+    const stopped = new Promise<void>((resolve, reject) => {
+      resolveStopped = resolve;
+      rejectStopped = reject;
     });
-    await new Promise<void>((resolve, reject) => {
-      let stopping = false;
-      const shutdown = (): void => {
-        if (stopping) {
-          return;
-        }
-        stopping = true;
-        void running.stop().then(
-          () => {
-            process.off("SIGINT", shutdown);
-            process.off("SIGTERM", shutdown);
-            resolve();
-          },
-          (error: unknown) => {
-            process.off("SIGINT", shutdown);
-            process.off("SIGTERM", shutdown);
-            reject(error);
-          },
-        );
-      };
-      process.on("SIGINT", shutdown);
-      process.on("SIGTERM", shutdown);
-    });
+    const stopRunningServer = (): void => {
+      if (running === undefined) {
+        return;
+      }
+      void running.stop().then(resolveStopped, rejectStopped);
+    };
+    const shutdown = (): void => {
+      if (stopping) {
+        return;
+      }
+      stopping = true;
+      stopRunningServer();
+    };
+    process.on("SIGINT", shutdown);
+    process.on("SIGTERM", shutdown);
+    try {
+      running = await startServer({
+        ...options,
+        environment: process.env,
+      });
+      if (stopping) {
+        stopRunningServer();
+      }
+      await stopped;
+    } finally {
+      process.off("SIGINT", shutdown);
+      process.off("SIGTERM", shutdown);
+    }
   },
   serviceStatus: () => launchdService().status(),
   stderr: (line) => process.stderr.write(line.endsWith("\n") ? line : `${line}\n`),
   stdout: (line) => process.stdout.write(line.endsWith("\n") ? line : `${line}\n`),
   uninstallService: () => launchdService().uninstall(),
-  restoreCatalog,
+  restoreCatalog: restoreCatalogWithOwner,
   writeFile: async (path, contents) => writeFile(path, contents),
 });
 

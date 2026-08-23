@@ -4,10 +4,12 @@ import type {
   BootstrapLocalOptions,
   BootstrapLocalResult,
 } from "../../../packages/onboarding/src/bootstrap";
+import type { RestoreCatalogWithOwnerOptions } from "../../../packages/onboarding/src/catalog-restore";
 import { MYNAS_VERSION } from "../../../packages/version/src/version";
 import { registerBootstrapCommand } from "./bootstrap";
 import { registerCatalogCommands } from "./catalog";
 import { CliHttpError, registerCommands } from "./commands";
+import { registerPhotoCommands } from "./photo-commands";
 import type {
   InstallServiceOptions,
   InstallServiceReceipt,
@@ -42,7 +44,7 @@ export type CliDependencies = {
   readonly stderr: (line: string) => void;
   readonly stdout: (line: string) => void;
   readonly uninstallService?: () => Promise<UninstallServiceReceipt>;
-  readonly restoreCatalog?: (dataDir: string, input: string) => Promise<unknown>;
+  readonly restoreCatalog?: (options: RestoreCatalogWithOwnerOptions) => Promise<unknown>;
   readonly writeFile: (path: string, contents: Uint8Array) => Promise<void>;
 };
 
@@ -85,6 +87,7 @@ export const runCli = async (
   registerBootstrapCommand(program, dependencies);
   registerCatalogCommands(program, dependencies);
   registerCommands(program, dependencies);
+  registerPhotoCommands(program, dependencies);
   registerServiceCommands(program, dependencies);
   registerSnapshotCommands(program, dependencies);
 

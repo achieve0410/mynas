@@ -2,26 +2,25 @@ import type { Database } from "bun:sqlite";
 import { z } from "zod";
 
 import { getMaintenanceOwnerId } from "./identity";
-import { failAbandonedMaintenanceRuns } from "./lifecycle";
+import { incidentByMaintenanceKind, type ProtectionIncidentStore } from "./incidents";
+import { type AbandonedMaintenanceRun, failAbandonedMaintenanceRuns } from "./lifecycle";
+import {
+  getMaintenancePolicy,
+  type MaintenancePolicy,
+  type MaintenancePolicyInput,
+  saveMaintenancePolicy,
+} from "./policy";
 
-export const maintenancePolicyInputSchema = z.object({
-  backupDirectory: z.string().min(1),
-  backupIntervalHours: z.number().int().min(1).max(8_760),
-  enabled: z.boolean(),
-  retentionCount: z.number().int().min(1).max(100),
-  scrubIntervalHours: z.number().int().min(1).max(8_760),
-});
+export {
+  type MaintenancePolicy,
+  type MaintenancePolicyInput,
+  maintenancePolicyInputSchema,
+} from "./policy";
 
-export type MaintenancePolicyInput = z.infer<typeof maintenancePolicyInputSchema>;
 export type MaintenanceKind = "catalog_backup" | "volume_scrub";
 export type MaintenanceTrigger = "manual" | "scheduled";
 export type MaintenanceStatus = "completed" | "failed" | "running";
 export type MaintenanceSummary = Readonly<Record<string, unknown>>;
-
-export type MaintenancePolicy = MaintenancePolicyInput & {
-  readonly destinationId: string;
-  readonly updatedAt: string;
-};
 
 export type MaintenanceRun = {
   readonly error: string | null;
@@ -33,16 +32,6 @@ export type MaintenanceRun = {
   readonly status: MaintenanceStatus;
   readonly summary: MaintenanceSummary | null;
   readonly trigger: MaintenanceTrigger;
-};
-
-type PolicyRow = {
-  readonly backup_directory: string;
-  readonly backup_interval_hours: number;
-  readonly destination_id: string;
-  readonly enabled: number;
-  readonly retention_count: number;
-  readonly scrub_interval_hours: number;
-  readonly updated_at: string;
 };
 
 type RunRow = {
@@ -66,16 +55,6 @@ type RunCompletion = {
 
 const summarySchema = z.record(z.string(), z.unknown());
 
-const toPolicy = (row: PolicyRow): MaintenancePolicy => ({
-  backupDirectory: row.backup_directory,
-  backupIntervalHours: row.backup_interval_hours,
-  destinationId: row.destination_id,
-  enabled: row.enabled === 1,
-  retentionCount: row.retention_count,
-  scrubIntervalHours: row.scrub_interval_hours,
-  updatedAt: row.updated_at,
-});
-
 const toRun = (row: RunRow): MaintenanceRun => ({
   error: row.error,
   finishedAt: row.finished_at,
@@ -94,42 +73,52 @@ export class MaintenanceRepository {
     private readonly now: () => Date = () => new Date(),
   ) {}
 
-  public completeRun(id: string, completion: RunCompletion): MaintenanceRun {
-    const result = this.database
-      .query(
-        `UPDATE maintenance_runs
-         SET status = ?, finished_at = ?, output_path = ?, summary_json = ?, error = ?
-         WHERE id = ? AND status = 'running'`,
-      )
-      .run(
-        completion.status,
-        this.now().toISOString(),
-        completion.outputPath,
-        completion.summary === null ? null : JSON.stringify(completion.summary),
-        completion.error,
-        id,
-      );
-    if (result.changes !== 1) {
-      throw new Error("running maintenance record not found");
+  public completeRun(
+    id: string,
+    completion: RunCompletion,
+    incidents: ProtectionIncidentStore,
+  ): MaintenanceRun {
+    this.database.exec("BEGIN IMMEDIATE");
+    try {
+      const result = this.database
+        .query(
+          `UPDATE maintenance_runs
+           SET status = ?, finished_at = ?, output_path = ?, summary_json = ?, error = ?
+           WHERE id = ? AND status = 'running'`,
+        )
+        .run(
+          completion.status,
+          this.now().toISOString(),
+          completion.outputPath,
+          completion.summary === null ? null : JSON.stringify(completion.summary),
+          completion.error,
+          id,
+        );
+      if (result.changes !== 1) {
+        throw new Error("running maintenance record not found");
+      }
+      const run = this.getRun(id);
+      const incident = incidentByMaintenanceKind[run.kind];
+      if (completion.status === "failed") {
+        incidents.recordInCurrentTransaction(incident.kind, incident.resourceKey);
+      } else {
+        incidents.resolveInCurrentTransaction(incident.kind, incident.resourceKey);
+      }
+      this.pruneRuns(100);
+      this.database.exec("COMMIT");
+      return run;
+    } catch (error) {
+      this.database.exec("ROLLBACK");
+      throw error;
     }
-    this.pruneRuns(100);
-    return this.getRun(id);
   }
 
-  public failAbandonedRuns(): number {
-    return failAbandonedMaintenanceRuns(this.database, this.now);
+  public failAbandonedRuns(incidents: ProtectionIncidentStore): readonly AbandonedMaintenanceRun[] {
+    return failAbandonedMaintenanceRuns(this.database, incidents, this.now);
   }
 
   public getPolicy(): MaintenancePolicy | null {
-    const row = this.database
-      .query<PolicyRow, []>(
-        `SELECT enabled, backup_directory, backup_interval_hours, scrub_interval_hours,
-                retention_count, destination_id, updated_at
-         FROM maintenance_policy
-         WHERE id = 1`,
-      )
-      .get();
-    return row === null ? null : toPolicy(row);
+    return getMaintenancePolicy(this.database);
   }
 
   public getOwnerId(): string {
@@ -179,38 +168,11 @@ export class MaintenanceRepository {
   }
 
   public savePolicy(input: MaintenancePolicyInput, destinationId?: string): MaintenancePolicy {
-    const policy = maintenancePolicyInputSchema.parse(input);
-    const storedDestinationId =
-      destinationId ?? this.getPolicy()?.destinationId ?? crypto.randomUUID().replaceAll("-", "");
-    if (!/^[0-9a-f]{32}$/.test(storedDestinationId)) {
-      throw new Error("maintenance destination identity is invalid");
-    }
-    const updatedAt = this.now().toISOString();
-    this.database
-      .query(
-        `INSERT INTO maintenance_policy
-         (id, enabled, backup_directory, backup_interval_hours, scrub_interval_hours,
-          retention_count, destination_id, updated_at)
-         VALUES (1, ?, ?, ?, ?, ?, ?, ?)
-         ON CONFLICT (id) DO UPDATE SET
-           enabled = excluded.enabled,
-           backup_directory = excluded.backup_directory,
-           backup_interval_hours = excluded.backup_interval_hours,
-           scrub_interval_hours = excluded.scrub_interval_hours,
-           retention_count = excluded.retention_count,
-           destination_id = excluded.destination_id,
-           updated_at = excluded.updated_at`,
-      )
-      .run(
-        policy.enabled ? 1 : 0,
-        policy.backupDirectory,
-        policy.backupIntervalHours,
-        policy.scrubIntervalHours,
-        policy.retentionCount,
-        storedDestinationId,
-        updatedAt,
-      );
-    return { ...policy, destinationId: storedDestinationId, updatedAt };
+    return saveMaintenancePolicy(this.database, {
+      ...(destinationId === undefined ? {} : { destinationId }),
+      input,
+      now: this.now,
+    });
   }
 
   public startRun(kind: MaintenanceKind, trigger: MaintenanceTrigger): MaintenanceRun {

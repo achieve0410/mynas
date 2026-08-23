@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { migrate } from "../../database/src/migrations";
+import { ProtectionIncidentStore } from "./incidents";
 import { MaintenanceCoordinator } from "./maintenance";
 import { MaintenanceRepository } from "./repository";
 import {
@@ -66,6 +67,7 @@ describe("MaintenanceScheduler", () => {
   let coordinator: MaintenanceCoordinator;
   let dataDir: string;
   let database: Database;
+  let incidents: ProtectionIncidentStore;
   let repository: MaintenanceRepository;
   let root: string;
   let timer: FakeMaintenanceTimer;
@@ -81,6 +83,7 @@ describe("MaintenanceScheduler", () => {
     migrate(database);
     timer = new FakeMaintenanceTimer();
     repository = new MaintenanceRepository(database, timer.now);
+    incidents = new ProtectionIncidentStore(database, timer.now);
     backupRuns = 0;
     scrubRuns = 0;
     coordinator = new MaintenanceCoordinator({
@@ -89,6 +92,7 @@ describe("MaintenanceScheduler", () => {
         await writeFile(outputPath, "scheduled backup");
       },
       dataDir,
+      incidents,
       now: timer.now,
       repository,
       volumes: {
@@ -184,6 +188,7 @@ describe("MaintenanceScheduler", () => {
           });
         },
         dataDir,
+        incidents,
         now: timer.now,
         repository,
         volumes: {

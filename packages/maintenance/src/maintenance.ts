@@ -1,6 +1,7 @@
 import { resolve } from "node:path";
 
 import { ManagedBackupStore } from "./backups";
+import type { ProtectionIncidentStore } from "./incidents";
 import {
   type MaintenanceKind,
   type MaintenancePolicy,
@@ -32,6 +33,7 @@ type MaintenanceVolumes = {
 type MaintenanceCoordinatorOptions = {
   readonly backup: (outputPath: string) => Promise<void>;
   readonly dataDir: string;
+  readonly incidents: ProtectionIncidentStore;
   readonly now?: () => Date;
   readonly repository: MaintenanceRepository;
   readonly volumes: MaintenanceVolumes;
@@ -128,19 +130,27 @@ export class MaintenanceCoordinator {
         outputPath,
       );
       await this.backups.verify(policy.backupDirectory, policy.destinationId);
-      return this.options.repository.completeRun(started.id, {
-        error: null,
-        outputPath,
-        status: "completed",
-        summary: { removedBackups, retentionCount: policy.retentionCount },
-      });
+      return this.options.repository.completeRun(
+        started.id,
+        {
+          error: null,
+          outputPath,
+          status: "completed",
+          summary: { removedBackups, retentionCount: policy.retentionCount },
+        },
+        this.options.incidents,
+      );
     } catch (error) {
-      return this.options.repository.completeRun(started.id, {
-        error: messageOf(error),
-        outputPath: null,
-        status: "failed",
-        summary: null,
-      });
+      return this.options.repository.completeRun(
+        started.id,
+        {
+          error: messageOf(error),
+          outputPath: null,
+          status: "failed",
+          summary: null,
+        },
+        this.options.incidents,
+      );
     }
   }
 
@@ -159,12 +169,16 @@ export class MaintenanceCoordinator {
         volumes.push({ error: messageOf(error), id, status: "failed" });
       }
     }
-    return this.options.repository.completeRun(started.id, {
-      error: failed ? "one or more volume scrubs failed" : null,
-      outputPath: null,
-      status: failed ? "failed" : "completed",
-      summary: { volumes },
-    });
+    return this.options.repository.completeRun(
+      started.id,
+      {
+        error: failed ? "one or more volume scrubs failed" : null,
+        outputPath: null,
+        status: failed ? "failed" : "completed",
+        summary: { volumes },
+      },
+      this.options.incidents,
+    );
   }
 
   private run(
@@ -196,11 +210,11 @@ export class MaintenanceCoordinator {
   ): Promise<MaintenanceBatch> {
     const runs: MaintenanceRun[] = [];
     for (const kind of kinds) {
-      runs.push(
+      const run =
         kind === "catalog_backup"
           ? await this.executeBackup(policy, trigger)
-          : await this.executeScrub(trigger),
-      );
+          : await this.executeScrub(trigger);
+      runs.push(run);
     }
     const batch = { runs, trigger } satisfies MaintenanceBatch;
     for (const listener of this.listeners) {

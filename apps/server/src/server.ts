@@ -16,6 +16,22 @@ export type StartedServer = {
   readonly stop: () => Promise<void>;
 };
 
+type AppFetch = (request: Request) => Response | Promise<Response>;
+type RequestTimeoutServer = Pick<ReturnType<typeof Bun.serve>, "timeout">;
+
+export const createServerFetch =
+  (fetch: AppFetch) =>
+  (request: Request, server: RequestTimeoutServer): Response | Promise<Response> => {
+    const path = new URL(request.url).pathname;
+    if (
+      request.method === "POST" &&
+      (path === "/api/v1/photos" || path === "/api/v1/photos/metadata/backfill")
+    ) {
+      server.timeout(request, 255);
+    }
+    return fetch(request);
+  };
+
 export const startServer = async (options: StartServerOptions): Promise<StartedServer> => {
   const database = await openCatalogDatabase(options.dataDir);
   let server: ReturnType<typeof Bun.serve> | undefined;
@@ -47,7 +63,7 @@ export const startServer = async (options: StartServerOptions): Promise<StartedS
       services,
     });
     server = Bun.serve({
-      fetch: app.fetch,
+      fetch: createServerFetch(app.fetch),
       hostname: options.host,
       maxRequestBodySize: 64 * 1_024 * 1_024,
       port: options.port,

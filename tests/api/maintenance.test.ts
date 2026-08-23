@@ -153,6 +153,50 @@ describe("maintenance policy API", () => {
       error: "maintenance interrupted before completion",
       status: "failed",
     });
+    const incidents = await restarted.request("/api/v1/incidents?status=active", {
+      headers: authorized(),
+    });
+    expect(incidents.status).toBe(200);
+    expect(
+      z
+        .array(
+          z.object({
+            kind: z.literal("catalog_backup_failed"),
+            occurrenceCount: z.number().int().positive(),
+            status: z.literal("active"),
+          }),
+        )
+        .parse(await incidents.json()),
+    ).toHaveLength(1);
+  });
+
+  test("rolls back abandoned reconciliation when incident persistence fails", () => {
+    const id = crypto.randomUUID();
+    database
+      .query(
+        `INSERT INTO maintenance_runs
+         (id, kind, trigger, status, started_at)
+         VALUES (?, 'catalog_backup', 'scheduled', 'running', ?)`,
+      )
+      .run(id, "2026-08-11T10:00:00.000Z");
+    database.exec(`
+      CREATE TRIGGER reject_protection_incident
+      BEFORE INSERT ON protection_incidents
+      BEGIN
+        SELECT RAISE(ABORT, 'injected incident persistence failure');
+      END;
+    `);
+
+    expect(() => createApp({ dataDir, database, environment: {} })).toThrow(
+      "injected incident persistence failure",
+    );
+    expect(
+      database
+        .query<{ readonly status: string }, [string]>(
+          "SELECT status FROM maintenance_runs WHERE id = ?",
+        )
+        .get(id),
+    ).toEqual({ status: "running" });
   });
 
   test("rejects a previously initialized directory substituted for the destination", async () => {

@@ -4,6 +4,7 @@ import { Hono } from "hono";
 import { ActivityRepository } from "../../../packages/activity/src/repository";
 import { AuthService } from "../../../packages/auth/src/auth";
 import { backupCatalogDatabase } from "../../../packages/database/src/catalog-backup";
+import { ProtectionIncidentStore } from "../../../packages/maintenance/src/incidents";
 import { MaintenanceCoordinator } from "../../../packages/maintenance/src/maintenance";
 import { MaintenanceRepository } from "../../../packages/maintenance/src/repository";
 import { MaintenanceScheduler } from "../../../packages/maintenance/src/scheduler";
@@ -21,8 +22,13 @@ import { errorResponse } from "./errors";
 import { registerFileRoutes } from "./file-routes";
 import { registerMaintenanceRoutes } from "./maintenance-routes";
 import { registerPhotoRoutes } from "./photo-routes";
+import { registerProtectionRoutes } from "./protection-routes";
 import { registerSnapshotBundleRoutes } from "./snapshot-bundle-routes";
 import { registerStorageRoutes } from "./storage-routes";
+import {
+  createTransferNotificationService,
+  registerTransferNotificationRoutes,
+} from "./transfer-notifications";
 import type { AppEnvironment, AppServices } from "./types";
 import { registerWebRoutes } from "./web-routes";
 
@@ -42,12 +48,14 @@ export type CreateAppOptions = AppServiceOptions & {
 export const createAppServices = (options: AppServiceOptions): AppServices => {
   const registry = new StorageRegistry(options.database, options.environment);
   const repository = new MaintenanceRepository(options.database);
-  repository.failAbandonedRuns();
+  const incidents = new ProtectionIncidentStore(options.database);
+  repository.failAbandonedRuns(incidents);
   const maintenance = new MaintenanceCoordinator({
     backup: async (outputPath) => {
       await backupCatalogDatabase(options.database, outputPath, { createParent: false });
     },
     dataDir: options.dataDir,
+    incidents,
     repository,
     volumes: {
       listIds: () => registry.listVolumes().map(({ id }) => id),
@@ -71,6 +79,7 @@ export const createAppServices = (options: AppServiceOptions): AppServices => {
       }),
     auth: new AuthService(options.database),
     database: options.database,
+    incidents,
     maintenance,
     peerAddress: options.peerAddress ?? (() => "127.0.0.1"),
     registry,
@@ -78,6 +87,7 @@ export const createAppServices = (options: AppServiceOptions): AppServices => {
     snapshots: new SnapshotService(new SnapshotRepository(options.database), async (id) =>
       registry.getVolume(id),
     ),
+    transferNotifications: createTransferNotificationService(options.environment),
   };
 };
 
@@ -90,11 +100,13 @@ export const createApp = (options: CreateAppOptions): Hono<AppEnvironment> => {
   registerAuthMiddleware(app, services);
   registerProtectedAuthRoutes(app, services);
   registerActivityRoutes(app, services);
+  registerTransferNotificationRoutes(app, services);
   registerStorageRoutes(app, services);
   registerFileRoutes(app, services);
   registerSnapshotBundleRoutes(app, services);
   registerPhotoRoutes(app, services);
   registerMaintenanceRoutes(app, services);
+  registerProtectionRoutes(app, services);
   registerWebRoutes(app, options.environment.MYNAS_WEB_ROOT);
 
   return app;
