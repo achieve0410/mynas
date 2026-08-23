@@ -91,6 +91,47 @@ describe("MirrorVolume", () => {
     database.close();
   });
 
+  test("round-trips raw objects without creating file catalog rows", async () => {
+    const key = "_snapshot-bundles/bundle-1/chunks/00000000.bin";
+    const contents = bytes("encrypted-chunk");
+
+    const stored = await volume.putObject(key, contents);
+
+    expect(stored).toEqual({
+      checksum: expect.stringMatching(/^[a-f0-9]{64}$/),
+      key,
+      size: contents.byteLength,
+    });
+    expect(first.objects.get(key)).toEqual(contents);
+    expect(second.objects.get(key)).toEqual(contents);
+    expect(text(await volume.getObject(key, stored.checksum))).toBe("encrypted-chunk");
+    expect(
+      database.query<{ readonly count: number }, []>("SELECT COUNT(*) AS count FROM files").get(),
+    ).toEqual({ count: 0 });
+
+    await volume.deleteObject(key);
+    expect(first.objects.has(key)).toBe(false);
+    expect(second.objects.has(key)).toBe(false);
+  });
+
+  test("rolls back partial raw writes and rejects total replica corruption", async () => {
+    const key = "_snapshot-bundles/bundle-1/chunks/00000001.bin";
+    const contents = bytes("second-chunk");
+    second.failWrites = true;
+
+    await expect(volume.putObject(key, contents)).rejects.toThrow("mirror object write failed");
+    expect(first.objects.has(key)).toBe(false);
+
+    second.failWrites = false;
+    const stored = await volume.putObject(key, contents);
+    first.objects.set(key, bytes("corrupt-a"));
+    expect(text(await volume.getObject(key, stored.checksum))).toBe("second-chunk");
+    second.objects.set(key, bytes("corrupt-b"));
+    await expect(volume.getObject(key, stored.checksum)).rejects.toThrow(
+      "unrecoverable mirror object",
+    );
+  });
+
   test("writes every byte to both members and reads through one corrupt replica", async () => {
     const version = await volume.put("photos/image.bin", bytes("mirror-bytes"));
     expect(version.blob).not.toBeNull();

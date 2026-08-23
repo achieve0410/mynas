@@ -25,6 +25,8 @@ export type RepairReport = {
   readonly unrecoverable: number;
 };
 
+export type MirrorObject = BlobDescriptor;
+
 type ReplicaInspection =
   | { readonly status: "healthy"; readonly contents: Uint8Array }
   | { readonly status: ScrubIssueStatus };
@@ -111,6 +113,89 @@ export class MirrorVolume {
         },
       );
     });
+  }
+
+  public async putObject(key: string, contents: Uint8Array): Promise<MirrorObject> {
+    return this.serializeWrite(async () => {
+      const health = await Promise.all(this.members.map((member) => member.probe()));
+      if (health.some((memberHealth) => memberHealth.status !== "healthy")) {
+        throw new MirrorError("degraded", "mirror is degraded; writes are refused");
+      }
+
+      const object: MirrorObject = {
+        checksum: checksum(contents),
+        key,
+        size: contents.byteLength,
+      };
+      return serializeReplicaWrite(
+        this.members.map((member) => `${member.replicaIdentity}\0${key}`),
+        async () => {
+          const [first, second] = this.members;
+          const [firstExisting, secondExisting] = await Promise.all([
+            first.stat(key),
+            second.stat(key),
+          ]);
+          const existingInspections = await Promise.all([
+            firstExisting === null ? null : this.inspectReplica(first, object),
+            secondExisting === null ? null : this.inspectReplica(second, object),
+          ]);
+          if (
+            existingInspections.some(
+              (inspection) => inspection !== null && inspection.status !== "healthy",
+            )
+          ) {
+            throw new MirrorError("write_failed", "mirror object key conflict");
+          }
+
+          const [firstWrite, secondWrite] = await Promise.allSettled([
+            firstExisting === null ? first.put(key, contents) : Promise.resolve(firstExisting),
+            secondExisting === null ? second.put(key, contents) : Promise.resolve(secondExisting),
+          ]);
+          if (firstWrite.status === "rejected" || secondWrite.status === "rejected") {
+            await this.rollbackNewReplica(first, key, firstExisting, firstWrite);
+            await this.rollbackNewReplica(second, key, secondExisting, secondWrite);
+            throw new MirrorError("write_failed", "mirror object write failed");
+          }
+
+          const inspections = await Promise.all(
+            this.members.map((member) => this.inspectReplica(member, object)),
+          );
+          if (inspections.some((inspection) => inspection.status !== "healthy")) {
+            await this.rollbackNewReplica(first, key, firstExisting, firstWrite);
+            await this.rollbackNewReplica(second, key, secondExisting, secondWrite);
+            throw new MirrorError("write_failed", "mirror object verification failed");
+          }
+          return object;
+        },
+      );
+    });
+  }
+
+  public async getObject(key: string, expectedChecksum: string): Promise<Uint8Array> {
+    const object: MirrorObject = { checksum: expectedChecksum, key, size: 0 };
+    for (const member of this.members) {
+      const inspection = await this.inspectReplica(member, object);
+      if (inspection.status === "healthy") {
+        return inspection.contents;
+      }
+    }
+    throw new MirrorError("unrecoverable", "unrecoverable mirror object");
+  }
+
+  public async deleteObject(key: string): Promise<void> {
+    await this.serializeWrite(async () =>
+      serializeReplicaWrite(
+        this.members.map((member) => `${member.replicaIdentity}\0${key}`),
+        async () => {
+          const deletions = await Promise.allSettled(
+            this.members.map((member) => member.delete(key)),
+          );
+          if (deletions.some((deletion) => deletion.status === "rejected")) {
+            throw new MirrorError("write_failed", "mirror object delete failed");
+          }
+        },
+      ),
+    );
   }
 
   public async repair(): Promise<RepairReport> {

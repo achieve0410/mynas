@@ -27,9 +27,32 @@ describe("migrate", () => {
       expect(tables).toContain("photos");
       expect(tables).toContain("schema_migrations");
       expect(tables).toContain("sessions");
+      expect(tables).toContain("snapshot_bundle_chunks");
+      expect(tables).toContain("snapshot_bundles");
       expect(tables).toContain("storage_backends");
       expect(tables).toContain("storage_volumes");
       expect(tables).toContain("users");
+      expect(
+        database
+          .query<{ readonly version: number }, []>(
+            "SELECT version FROM schema_migrations ORDER BY version DESC LIMIT 1",
+          )
+          .get(),
+      ).toEqual({ version: 8 });
+      expect(
+        database
+          .query<{ readonly table: string }, []>(
+            "SELECT \"table\" FROM pragma_foreign_key_list('snapshot_bundles')",
+          )
+          .all(),
+      ).toContainEqual({ table: "storage_volumes" });
+      expect(
+        database
+          .query<{ readonly table: string }, []>(
+            "SELECT \"table\" FROM pragma_foreign_key_list('snapshot_bundle_chunks')",
+          )
+          .all(),
+      ).toContainEqual({ table: "snapshot_bundles" });
       expect(
         database
           .query<{ readonly sql: string }, []>(

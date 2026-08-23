@@ -1,6 +1,6 @@
 import type { Database } from "bun:sqlite";
 
-export const CURRENT_SCHEMA_VERSION = 7;
+export const CURRENT_SCHEMA_VERSION = 8;
 
 export const migrate = (database: Database): void => {
   database.exec(`
@@ -176,6 +176,62 @@ export const migrate = (database: Database): void => {
 
     CREATE INDEX IF NOT EXISTS activity_events_time_idx
       ON activity_events (occurred_at DESC, sequence DESC);
+
+    CREATE TABLE IF NOT EXISTS snapshot_bundles (
+      id TEXT PRIMARY KEY,
+      volume_id TEXT NOT NULL REFERENCES storage_volumes(id) ON DELETE RESTRICT,
+      producer_kind TEXT NOT NULL CHECK (length(producer_kind) BETWEEN 1 AND 80),
+      producer_id TEXT NOT NULL CHECK (length(producer_id) BETWEEN 1 AND 200),
+      expected_chunk_count INTEGER NOT NULL CHECK (expected_chunk_count > 0),
+      expected_total_bytes INTEGER NOT NULL CHECK (expected_total_bytes > 0),
+      status TEXT NOT NULL CHECK (status IN ('uploading', 'complete', 'deleting')),
+      manifest_key TEXT,
+      manifest_checksum TEXT
+        CHECK (manifest_checksum IS NULL OR (
+          length(manifest_checksum) = 64
+          AND manifest_checksum NOT GLOB '*[^0-9a-f]*'
+        )),
+      signature_key TEXT,
+      signature_checksum TEXT
+        CHECK (signature_checksum IS NULL OR (
+          length(signature_checksum) = 64
+          AND signature_checksum NOT GLOB '*[^0-9a-f]*'
+        )),
+      created_at TEXT NOT NULL,
+      completed_at TEXT,
+      CHECK (
+        (
+          status = 'uploading'
+          AND manifest_key IS NULL
+          AND manifest_checksum IS NULL
+          AND signature_key IS NULL
+          AND signature_checksum IS NULL
+          AND completed_at IS NULL
+        )
+        OR
+        (
+          status IN ('complete', 'deleting')
+          AND manifest_key IS NOT NULL
+          AND manifest_checksum IS NOT NULL
+          AND signature_key IS NOT NULL
+          AND signature_checksum IS NOT NULL
+          AND completed_at IS NOT NULL
+        )
+      )
+    );
+
+    CREATE INDEX IF NOT EXISTS snapshot_bundles_status_time_idx
+      ON snapshot_bundles (status, created_at DESC);
+
+    CREATE TABLE IF NOT EXISTS snapshot_bundle_chunks (
+      bundle_id TEXT NOT NULL REFERENCES snapshot_bundles(id) ON DELETE CASCADE,
+      chunk_index INTEGER NOT NULL CHECK (chunk_index >= 0),
+      checksum TEXT NOT NULL
+        CHECK (length(checksum) = 64 AND checksum NOT GLOB '*[^0-9a-f]*'),
+      size INTEGER NOT NULL CHECK (size > 0),
+      uploaded_at TEXT NOT NULL,
+      PRIMARY KEY (bundle_id, chunk_index)
+    );
   `);
 
   const photoTableSql = database
