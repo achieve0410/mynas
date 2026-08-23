@@ -31,10 +31,11 @@ const sameBytes = (first: Uint8Array, second: Uint8Array): boolean =>
 export const sha256 = (contents: Uint8Array): string =>
   new Bun.CryptoHasher("sha256").update(contents).digest("hex");
 
-export const canonicalManifestBytes = (value: SnapshotManifest): Uint8Array => {
-  const manifest = snapshotManifestSchema.parse(value);
-  return encoder.encode(JSON.stringify(canonicalize(manifest)));
-};
+export const canonicalJsonBytes = (value: CanonicalValue): Uint8Array =>
+  encoder.encode(JSON.stringify(canonicalize(value)));
+
+export const canonicalManifestBytes = (value: SnapshotManifest): Uint8Array =>
+  canonicalJsonBytes(snapshotManifestSchema.parse(value));
 
 export const parseCanonicalManifest = (contents: Uint8Array): SnapshotManifest => {
   try {
