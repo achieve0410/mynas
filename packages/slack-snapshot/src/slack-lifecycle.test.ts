@@ -119,6 +119,24 @@ describe("SlackDashboardLifecycle", () => {
     expect(calls).toEqual([]);
   });
 
+  test("treats an already absent Tailnet handler as stopped", async () => {
+    const lifecycle = new SlackDashboardLifecycle({
+      home: "/home/owner",
+      isLoaded: async () => false,
+      runLaunchctl: async () => ({ exitCode: 0, stderr: "", stdout: "" }),
+      runTailscale: async () => ({
+        exitCode: 1,
+        stderr: "failed to remove web serve: handler does not exist",
+        stdout: "",
+      }),
+      uid: 501,
+      verifyPlist: async () => undefined,
+      waitForPort: async () => undefined,
+    });
+
+    await expect(lifecycle.stop()).resolves.toBeUndefined();
+  });
+
   test("partial stop failure attempts complete rollback startup", async () => {
     const calls: string[] = [];
     const lifecycle = new SlackDashboardLifecycle({

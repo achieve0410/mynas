@@ -90,10 +90,7 @@ export class SlackDashboardLifecycle {
   public async stop(): Promise<void> {
     await this.preflight();
     try {
-      await this.required(
-        this.options.runTailscale(["serve", "--yes", "--https=9443", "off"]),
-        "Tailscale Serve stop",
-      );
+      await this.stopTailscale();
       await this.stopService("tagging");
       await this.stopService("classify");
       await this.stopService("sync");
@@ -151,6 +148,14 @@ export class SlackDashboardLifecycle {
       this.options.runLaunchctl(["bootout", `${this.domain}/${serviceLabel}`]),
       `launchctl bootout ${serviceLabel}`,
     );
+  }
+
+  private async stopTailscale(): Promise<void> {
+    const result = await this.options.runTailscale(["serve", "--yes", "--https=9443", "off"]);
+    if (result.exitCode === 0 || result.stderr.includes("handler does not exist")) {
+      return;
+    }
+    throw new Error(result.stderr.trim() || `Tailscale Serve stop failed with ${result.exitCode}`);
   }
 
   private async required(
