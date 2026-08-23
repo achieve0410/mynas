@@ -1,4 +1,4 @@
-import { readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 
 import { backupCatalog, restoreCatalog } from "../../../packages/database/src/catalog-backup";
@@ -45,8 +45,13 @@ const exitCode = await runCli(process.argv.slice(2), {
   environment: process.env,
   fetch,
   installService: (options) => launchdService().install(options),
+  mkdir: async (path) => {
+    await mkdir(path, { recursive: true });
+  },
   readFile: async (path) => new Uint8Array(await readFile(path)),
   readStdin: () => Bun.stdin.text(),
+  remove: async (path) => rm(path, { force: true, recursive: true }),
+  rename,
   serve: async (options) => {
     const running = await startServer({
       ...options,

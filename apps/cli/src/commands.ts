@@ -20,7 +20,7 @@ const exactArrayBuffer = (contents: Uint8Array): ArrayBuffer => {
   return buffer;
 };
 
-const request = async (
+export const request = async (
   dependencies: CliDependencies,
   path: string,
   init: RequestInit = {},
@@ -54,7 +54,7 @@ const jsonRequest = async (
   return response.json();
 };
 
-const writeJson = (dependencies: CliDependencies, value: unknown): void => {
+export const writeJson = (dependencies: CliDependencies, value: unknown): void => {
   dependencies.stdout(JSON.stringify(value));
 };
 

@@ -15,6 +15,7 @@ import type {
   UninstallServiceReceipt,
 } from "./service";
 import { registerServiceCommands } from "./service-command";
+import { registerSnapshotCommands } from "./snapshot-command";
 
 export type ServeOptions = {
   readonly dataDir: string;
@@ -31,8 +32,11 @@ export type CliDependencies = {
   readonly environment: Readonly<Record<string, string | undefined>>;
   readonly fetch: FetchLike;
   readonly installService?: (options: InstallServiceOptions) => Promise<InstallServiceReceipt>;
+  readonly mkdir?: (path: string) => Promise<void>;
   readonly readFile: (path: string) => Promise<Uint8Array>;
   readonly readStdin: () => Promise<string>;
+  readonly remove?: (path: string) => Promise<void>;
+  readonly rename?: (from: string, to: string) => Promise<void>;
   readonly serve?: (options: ServeOptions) => Promise<void>;
   readonly serviceStatus?: () => Promise<ServiceStatus>;
   readonly stderr: (line: string) => void;
@@ -82,6 +86,7 @@ export const runCli = async (
   registerCatalogCommands(program, dependencies);
   registerCommands(program, dependencies);
   registerServiceCommands(program, dependencies);
+  registerSnapshotCommands(program, dependencies);
 
   try {
     await program.parseAsync([...arguments_], { from: "user" });

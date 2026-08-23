@@ -36,26 +36,29 @@ export const beginSnapshotSchema = z
   })
   .strict();
 
+export const snapshotBundleSchema = z
+  .object({
+    completedAt: z.string().nullable(),
+    createdAt: z.string(),
+    expectedChunkCount: z.number().int().positive(),
+    expectedTotalBytes: z.number().int().positive(),
+    id: z.uuid(),
+    manifestChecksum: snapshotChecksumSchema.nullable(),
+    manifestKey: z.string().nullable(),
+    producerId: z.string(),
+    producerKind: z.string(),
+    signatureChecksum: snapshotChecksumSchema.nullable(),
+    signatureKey: z.string().nullable(),
+    status: z.enum(["complete", "deleting", "uploading"]),
+    volumeId: z.string(),
+  })
+  .strict();
+
 export type BeginSnapshotInput = z.infer<typeof beginSnapshotSchema>;
+export type SnapshotBundle = z.infer<typeof snapshotBundleSchema>;
 export type SnapshotManifest = z.infer<typeof snapshotManifestSchema>;
 
 export type SnapshotStatus = "complete" | "deleting" | "uploading";
-
-export type SnapshotBundle = {
-  readonly completedAt: string | null;
-  readonly createdAt: string;
-  readonly expectedChunkCount: number;
-  readonly expectedTotalBytes: number;
-  readonly id: string;
-  readonly manifestChecksum: string | null;
-  readonly manifestKey: string | null;
-  readonly producerId: string;
-  readonly producerKind: string;
-  readonly signatureChecksum: string | null;
-  readonly signatureKey: string | null;
-  readonly status: SnapshotStatus;
-  readonly volumeId: string;
-};
 
 export type SnapshotChunk = {
   readonly bundleId: string;
