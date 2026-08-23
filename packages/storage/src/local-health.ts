@@ -77,7 +77,7 @@ export const inspectLocalRoot = async (
   const metadataArguments =
     process.platform === "darwin"
       ? ["/usr/bin/stat", "-f", "%d|%i|%HT", root]
-      : ["/usr/bin/stat", "-Lc", "%d|%i|%F", root];
+      : ["/usr/bin/stat", "-c", "%d|%i|%F", root];
   const [canonical, metadata, capacity, readable] = await Promise.all([
     runCommand(["/bin/realpath", root], signal, spawn),
     runCommand(metadataArguments, signal, spawn),
