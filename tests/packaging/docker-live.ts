@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { z } from "zod";
 
@@ -25,7 +26,7 @@ const volumeHealthSchema = z.object({
 
 const artifactRoot = resolve(repositoryRoot, ".artifacts/qa/packaging");
 await mkdir(artifactRoot, { recursive: true });
-const qaRoot = await mkdtemp(join(artifactRoot, "docker-runtime."));
+const qaRoot = await mkdtemp(join(homedir(), ".mynas-docker-qa."));
 const storageRoot = join(qaRoot, "storage");
 const backendRoots = [join(storageRoot, "disk-a"), join(storageRoot, "disk-b")];
 await Promise.all(backendRoots.map((root) => mkdir(root, { recursive: true })));
@@ -152,7 +153,7 @@ try {
     cmpExitCode: 0,
     downloadSha256,
     health,
-    image: "mynas:0.1.0",
+    image: "mynas:0.4.0",
     sourceSha256,
     volumeStatus: volume.status,
   };

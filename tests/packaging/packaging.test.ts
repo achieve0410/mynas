@@ -102,6 +102,8 @@ describe("distribution packaging", () => {
       "utf8",
     );
     expect(source).toContain('"--build"');
+    expect(source).toContain("homedir()");
+    expect(source).toContain(".mynas-docker-qa.");
     expect(source).toContain("process.pid");
     expect(source).toContain('MYNAS_PORT: "0"');
     expect(source).toContain("chmod(root, 0o777)");
