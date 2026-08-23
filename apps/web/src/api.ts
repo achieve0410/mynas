@@ -1,6 +1,7 @@
 import type { z } from "zod";
 
 import {
+  activityEventsSchema,
   albumSchema,
   albumsSchema,
   apiTokenSchema,
@@ -135,15 +136,23 @@ export const api = {
   getVolumeHealth: (volumeId: string) =>
     json(`/api/v1/volumes/${encodeURIComponent(volumeId)}/status`, volumeHealthSchema),
   listAlbums: () => json("/api/v1/albums", albumsSchema),
+  listActivity: () => json("/api/v1/activity", activityEventsSchema),
   listBackends: () => json("/api/v1/backends", backendsSchema),
   listFiles: (
     volumeId: string,
     prefix: string,
-    options: { readonly cursor?: string; readonly limit?: number } = {},
+    options: {
+      readonly cursor?: string;
+      readonly limit?: number;
+      readonly search?: string;
+      readonly sort?: "name" | "type";
+    } = {},
   ) => {
     const query = new URLSearchParams({
       limit: String(options.limit ?? 50),
       prefix,
+      search: options.search ?? "",
+      sort: options.sort ?? "name",
     });
     if (options.cursor !== undefined) {
       query.set("cursor", options.cursor);

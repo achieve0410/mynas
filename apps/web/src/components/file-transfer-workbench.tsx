@@ -1,8 +1,11 @@
 import { Download, FileUp, Fingerprint, FolderUp, Trash2 } from "lucide-react";
-import { type FormEvent, useState } from "react";
+import { useState } from "react";
 
 import { api } from "../api";
+import { useDownloadTransfer } from "../hooks/use-download-transfer";
+import { useFileUpload } from "../hooks/use-file-upload";
 import { useVolumeHealth } from "../hooks/use-volume-health";
+import { TransferProgressList } from "./transfer-progress-list";
 
 type FileTransferWorkbenchProps = {
   readonly keyValue: string;
@@ -11,88 +14,33 @@ type FileTransferWorkbenchProps = {
   readonly volumeId: string;
 };
 
-type UploadSelection = {
-  readonly files: readonly File[];
-  readonly kind: "directory" | "files";
-};
-
 export const FileTransferWorkbench = ({
   keyValue,
   onChanged,
   onKeyChange,
   volumeId,
 }: FileTransferWorkbenchProps) => {
-  const [selection, setSelection] = useState<UploadSelection | null>(null);
-  const [failedPaths, setFailedPaths] = useState<readonly string[]>([]);
-  const [message, setMessage] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [pendingAction, setPendingAction] = useState<"delete" | "download" | "upload" | null>(null);
+  const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [pendingAction, setPendingAction] = useState<"delete" | "download" | null>(null);
   const writeAvailability = useVolumeHealth(volumeId);
-
-  const upload = async (event: FormEvent) => {
-    event.preventDefault();
-    if (selection === null) {
-      return;
-    }
-    setError(null);
-    setFailedPaths([]);
-    setPendingAction("upload");
-    const failures: string[] = [];
-    let uploaded = 0;
-    for (const file of selection.files) {
-      const relativePath =
-        selection.kind === "directory" && file.webkitRelativePath.length > 0
-          ? file.webkitRelativePath
-          : file.name;
-      const path =
-        selection.kind === "files" && selection.files.length === 1 && !keyValue.endsWith("/")
-          ? keyValue
-          : `${keyValue.length === 0 || keyValue.endsWith("/") ? keyValue : `${keyValue}/`}${relativePath}`;
-      try {
-        await api.uploadFile(volumeId, path, file);
-        uploaded += 1;
-      } catch {
-        failures.push(path);
-      }
-    }
-    try {
-      if (uploaded > 0) {
-        await onChanged();
-      }
-      setFailedPaths(failures);
-      setMessage(
-        `${uploaded} of ${selection.files.length} ${
-          selection.files.length === 1 ? "file" : "files"
-        } uploaded.`,
-      );
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Catalog refresh failed");
-    } finally {
-      setPendingAction(null);
-    }
-  };
-
-  const selectFiles = (files: FileList | null, kind: UploadSelection["kind"]): void => {
-    const selected = files === null ? [] : Array.from(files);
-    setSelection(selected.length === 0 ? null : { files: selected, kind });
-    setFailedPaths([]);
-    setMessage(null);
-    setError(null);
-  };
+  const fileUpload = useFileUpload({ keyValue, onChanged, onKeyChange, volumeId });
+  const fileDownload = useDownloadTransfer();
+  const busy = pendingAction !== null || fileUpload.isUploading || fileDownload.isDownloading;
 
   const download = async () => {
-    setError(null);
+    setActionError(null);
     setPendingAction("download");
     try {
-      const blob = await api.downloadFile(volumeId, keyValue);
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = keyValue.split("/").at(-1) ?? "download";
-      link.click();
-      URL.revokeObjectURL(url);
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Download failed");
+      await fileDownload.download({
+        filename: keyValue.split("/").at(-1) ?? "download",
+        id: `exact:${keyValue}`,
+        label: keyValue,
+        path: `/api/v1/files/${encodeURIComponent(volumeId)}/${keyValue
+          .split("/")
+          .map(encodeURIComponent)
+          .join("/")}`,
+      });
     } finally {
       setPendingAction(null);
     }
@@ -110,7 +58,13 @@ export const FileTransferWorkbench = ({
           corrupt.
         </p>
       </div>
-      <form className="form-panel embedded" onSubmit={upload}>
+      <form
+        className="form-panel embedded"
+        onSubmit={(event) => {
+          setActionError(null);
+          void fileUpload.upload(event);
+        }}
+      >
         <label>
           Object path
           <input
@@ -129,7 +83,9 @@ export const FileTransferWorkbench = ({
               data-testid="file-upload"
               multiple
               onChange={(event) => {
-                selectFiles(event.target.files, "files");
+                setActionError(null);
+                setActionMessage(null);
+                fileUpload.selectFiles(event.target.files, "files");
                 event.target.value = "";
               }}
               type="file"
@@ -142,7 +98,9 @@ export const FileTransferWorkbench = ({
               data-testid="file-directory-upload"
               multiple
               onChange={(event) => {
-                selectFiles(event.target.files, "directory");
+                setActionError(null);
+                setActionMessage(null);
+                fileUpload.selectFiles(event.target.files, "directory");
                 event.target.value = "";
               }}
               ref={(input) => input?.setAttribute("webkitdirectory", "")}
@@ -150,33 +108,34 @@ export const FileTransferWorkbench = ({
             />
           </label>
         </div>
-        {selection === null ? null : (
+        {fileUpload.selection === null ? null : (
           <p className="form-note">
-            {selection.files.length} {selection.files.length === 1 ? "item" : "items"} selected
+            {fileUpload.selection.items.length}{" "}
+            {fileUpload.selection.items.length === 1 ? "item" : "items"} selected
           </p>
         )}
         <div className="button-row">
           <button
             className="button primary"
             disabled={
-              selection === null ||
+              fileUpload.selection === null ||
               keyValue.length === 0 ||
               volumeId.length === 0 ||
               !writeAvailability.canWrite ||
-              pendingAction !== null
+              busy
             }
             title={writeAvailability.canWrite ? undefined : writeAvailability.reason}
             type="submit"
           >
-            {pendingAction === "upload"
+            {fileUpload.isUploading
               ? "Uploading..."
-              : `Upload ${selection?.files.length ?? 0} protected ${
-                  selection?.files.length === 1 ? "item" : "items"
+              : `Upload ${fileUpload.selection?.items.length ?? 0} protected ${
+                  fileUpload.selection?.items.length === 1 ? "item" : "items"
                 }`}
           </button>
           <button
             className="button secondary"
-            disabled={keyValue.length === 0 || pendingAction !== null}
+            disabled={keyValue.length === 0 || busy}
             onClick={download}
             type="button"
           >
@@ -184,21 +143,19 @@ export const FileTransferWorkbench = ({
           </button>
           <button
             className="button quiet danger-text"
-            disabled={
-              keyValue.length === 0 || !writeAvailability.canWrite || pendingAction !== null
-            }
+            disabled={keyValue.length === 0 || !writeAvailability.canWrite || busy}
             onClick={async () => {
               if (!window.confirm(`Delete "${keyValue}" from ${volumeId}?`)) {
                 return;
               }
-              setError(null);
+              setActionError(null);
               setPendingAction("delete");
               try {
                 await api.deleteFile(volumeId, keyValue);
                 await onChanged();
-                setMessage(`${keyValue} was deleted.`);
+                setActionMessage(`${keyValue} was deleted.`);
               } catch (cause) {
-                setError(cause instanceof Error ? cause.message : "Delete failed");
+                setActionError(cause instanceof Error ? cause.message : "Delete failed");
               } finally {
                 setPendingAction(null);
               }
@@ -209,21 +166,23 @@ export const FileTransferWorkbench = ({
             <Trash2 aria-hidden="true" size={16} /> Delete
           </button>
         </div>
-        {message === null ? null : (
+        {(fileUpload.message ?? actionMessage) === null ? null : (
           <p aria-live="polite" className="form-success">
-            {message}
+            {fileUpload.message ?? actionMessage}
           </p>
         )}
-        {error === null ? null : (
+        <TransferProgressList kind="file" rows={fileUpload.transferRows} />
+        <TransferProgressList kind="file" operation="download" rows={fileDownload.rows} />
+        {(fileUpload.error ?? actionError) === null ? null : (
           <p aria-live="polite" className="form-error">
-            {error}
+            {fileUpload.error ?? actionError}
           </p>
         )}
-        {failedPaths.length === 0 ? null : (
+        {fileUpload.failedPaths.length === 0 ? null : (
           <div aria-live="polite" className="upload-failures">
             <strong>Failed paths</strong>
             <ul>
-              {failedPaths.map((path) => (
+              {fileUpload.failedPaths.map((path) => (
                 <li className="mono" key={path}>
                   {path}
                 </li>

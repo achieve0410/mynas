@@ -1,11 +1,17 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Database, Download, ShieldCheck } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { api } from "../api";
 import { FileBrowser } from "../components/file-browser";
+import {
+  FileLibraryControls,
+  FilePageHeader,
+  type LibraryRefreshState,
+} from "../components/file-library-controls";
 import { FileTransferWorkbench } from "../components/file-transfer-workbench";
 import { FileVersionPanel } from "../components/file-version-panel";
+import { TransferProgressList } from "../components/transfer-progress-list";
+import { useDownloadTransfer } from "../hooks/use-download-transfer";
 import type { FileListEntry, FileListing } from "../schemas";
 
 export const FilesPage = () => {
@@ -14,9 +20,14 @@ export const FilesPage = () => {
   const [prefix, setPrefix] = useState("");
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
   const [keyValue, setKeyValue] = useState("");
-  const [pendingDownload, setPendingDownload] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [selections, setSelections] = useState<readonly FileListEntry[]>([]);
+  const [search, setSearch] = useState("");
+  const [sort, setSort] = useState<"name" | "type">("name");
+  const [refreshState, setRefreshState] = useState<LibraryRefreshState>("idle");
+  const currentDownload = useDownloadTransfer();
+  const archiveDownload = useDownloadTransfer();
+  const pendingDownload = currentDownload.isDownloading || archiveDownload.isDownloading;
 
   const volumes = useQuery({
     queryFn: api.listVolumes,
@@ -31,9 +42,11 @@ export const FilesPage = () => {
       api.listFiles(
         volumeId,
         prefix,
-        pageParam === null ? { limit: 50 } : { cursor: pageParam, limit: 50 },
+        pageParam === null
+          ? { limit: 50, search, sort }
+          : { cursor: pageParam, limit: 50, search, sort },
       ),
-    queryKey: ["files", volumeId, prefix],
+    queryKey: ["files", volumeId, prefix, search, sort],
   });
   const entries = useMemo(
     () => listing.data?.pages.flatMap((page: FileListing) => page.entries) ?? [],
@@ -75,6 +88,7 @@ export const FilesPage = () => {
     setKeyValue("");
     setSelections([]);
     setMessage(null);
+    setSearch("");
   };
 
   const selectFolder = (nextPrefix: string): void => {
@@ -83,6 +97,7 @@ export const FilesPage = () => {
     setKeyValue(nextPrefix);
     setSelections([]);
     setMessage(null);
+    setSearch("");
   };
 
   const selectFile = (path: string): void => {
@@ -95,90 +110,70 @@ export const FilesPage = () => {
     if (selectedPath === null) {
       return;
     }
-    setPendingDownload(true);
-    try {
-      const blob = await api.downloadFile(volumeId, selectedPath);
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = selectedPath.split("/").at(-1) ?? "download";
-      document.body.append(link);
-      link.click();
-      link.remove();
-      URL.revokeObjectURL(url);
-    } finally {
-      setPendingDownload(false);
-    }
+    const filename = selectedPath.split("/").at(-1) ?? "download";
+    const encodedPath = selectedPath.split("/").map(encodeURIComponent).join("/");
+    await currentDownload.download({
+      filename,
+      id: `current:${selectedPath}`,
+      label: filename,
+      path: `/api/v1/files/${encodeURIComponent(volumeId)}/${encodedPath}`,
+    });
   };
 
   const downloadArchive = async (): Promise<void> => {
-    setPendingDownload(true);
-    try {
-      const archive = await api.downloadFileArchive(
-        volumeId,
-        selections.map(({ kind, path }) => ({ kind, path })),
-      );
-      const url = URL.createObjectURL(archive);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = "mynas-files.zip";
-      document.body.append(link);
-      link.click();
-      link.remove();
-      URL.revokeObjectURL(url);
-    } finally {
-      setPendingDownload(false);
-    }
+    await archiveDownload.download({
+      filename: "mynas-files.zip",
+      init: {
+        body: JSON.stringify({
+          selections: selections.map(({ kind, path }) => ({ kind, path })),
+        }),
+        headers: { "content-type": "application/json" },
+        method: "POST",
+      },
+      label: `${selections.length} selected items`,
+      path: `/api/v1/volumes/${encodeURIComponent(volumeId)}/archive`,
+    });
+  };
+
+  const refreshVisibleFiles = async (): Promise<void> => {
+    setRefreshState("refreshing");
+    const [filesResult, versionsResult] = await Promise.all([
+      listing.refetch(),
+      selectedPath === null ? Promise.resolve(null) : versions.refetch(),
+    ]);
+    setRefreshState(
+      filesResult.isError || versionsResult?.isError === true ? "failed" : "complete",
+    );
   };
 
   return (
     <div className="page">
-      <header className="page-heading">
-        <div>
-          <span className="eyebrow">Verified recovery workspace</span>
-          <h1>Files</h1>
-          <p>Browse cataloged objects, inspect immutable versions, and recover protected bytes.</p>
-        </div>
-        <div className="button-row">
-          <button
-            className="button secondary"
-            disabled={selections.length === 0 || pendingDownload}
-            onClick={() => {
-              void downloadArchive();
-            }}
-            type="button"
-          >
-            <Download aria-hidden="true" size={16} /> Download selected
-          </button>
-          <span className="action-icon large">
-            <ShieldCheck aria-hidden="true" size={24} />
-          </span>
-        </div>
-      </header>
+      <FilePageHeader
+        downloading={pendingDownload}
+        onDownloadSelected={() => {
+          void downloadArchive();
+        }}
+        selectionCount={selections.length}
+      />
 
-      <section className="file-volume-bar">
-        <label>
-          Volume
-          <select
-            disabled={volumes.isLoading || (volumes.data?.length ?? 0) === 0}
-            onChange={(event) => selectVolume(event.target.value)}
-            value={volumeId}
-          >
-            {(volumes.data ?? []).map((volume) => (
-              <option key={volume.id} value={volume.id}>
-                {volume.id}
-              </option>
-            ))}
-          </select>
-        </label>
-        <div className="status-strip">
-          <Database aria-hidden="true" size={18} />
-          <div>
-            <strong>Catalog-first browsing</strong>
-            <span>Folders and history remain visible without scanning replica storage.</span>
-          </div>
-        </div>
-      </section>
+      <FileLibraryControls
+        onRefresh={() => {
+          void refreshVisibleFiles();
+        }}
+        onSearchChange={(value) => {
+          setSearch(value);
+          setSelections([]);
+          setSelectedPath(null);
+        }}
+        onSortChange={setSort}
+        onVolumeChange={selectVolume}
+        refreshState={refreshState}
+        search={search}
+        sort={sort}
+        volumeId={volumeId}
+        volumes={volumes.data ?? []}
+        volumesLoading={volumes.isLoading}
+      />
 
       {volumes.error === null ? null : <p className="form-error">{volumes.error.message}</p>}
       {message === null ? null : (
@@ -186,6 +181,8 @@ export const FilesPage = () => {
           {message}
         </p>
       )}
+      <TransferProgressList kind="file" operation="download" rows={currentDownload.rows} />
+      <TransferProgressList kind="file" operation="download" rows={archiveDownload.rows} />
       {restore.error === null ? null : (
         <p aria-live="assertive" className="form-error">
           {restore.error.message}
@@ -209,6 +206,7 @@ export const FilesPage = () => {
           }}
           onSelectionChange={setSelections}
           prefix={prefix}
+          refreshState={refreshState}
           selectedPath={selectedPath}
           selections={selections}
         />

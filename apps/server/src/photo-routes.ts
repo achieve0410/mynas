@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import { PhotoService } from "../../../packages/photos/src/photos";
 
+import { recordActivity } from "./activity";
 import type { AppInstance, AppServices } from "./types";
 import { createZip } from "./zip";
 
@@ -51,22 +52,37 @@ const contentTypeFor = (format: "heic" | "jpeg" | "png"): string =>
 
 export const registerPhotoRoutes = (app: AppInstance, services: AppServices): void => {
   app.post("/api/v1/photos", async (context) => {
+    const filename = filenameSchema.parse(context.req.header("x-mynas-filename"));
+    const resource = { kind: "photo", path: filename } as const;
     const declaredLength = Number(context.req.header("content-length"));
     if (Number.isFinite(declaredLength) && declaredLength > MAX_PHOTO_UPLOAD_BYTES) {
+      services.activity.record({
+        action: "photo.upload",
+        error: { code: "payload_too_large", message: "photo exceeds 25 MiB limit" },
+        outcome: "failure",
+        resource,
+      });
       return context.json(
         { error: { code: "payload_too_large", message: "photo exceeds 25 MiB limit" } },
         413,
       );
     }
-    const filename = filenameSchema.parse(context.req.header("x-mynas-filename"));
     const contents = new Uint8Array(await context.req.arrayBuffer());
     if (contents.byteLength > MAX_PHOTO_UPLOAD_BYTES) {
+      services.activity.record({
+        action: "photo.upload",
+        error: { code: "payload_too_large", message: "photo exceeds 25 MiB limit" },
+        outcome: "failure",
+        resource,
+      });
       return context.json(
         { error: { code: "payload_too_large", message: "photo exceeds 25 MiB limit" } },
         413,
       );
     }
-    const result = await (await serviceFor(services)).ingest({ contents, filename });
+    const result = await recordActivity(services, "photo.upload", resource, async () =>
+      (await serviceFor(services)).ingest({ contents, filename }),
+    );
     return context.json(result, 201);
   });
 
@@ -76,15 +92,22 @@ export const registerPhotoRoutes = (app: AppInstance, services: AppServices): vo
 
   app.post("/api/v1/photos/archive", async (context) => {
     const { photoIds } = photoArchiveSchema.parse(await context.req.json());
-    const service = await serviceFor(services);
-    const photos = [...new Set(photoIds)].map((photoId) => service.getPhoto(photoId));
-    const entries = await Promise.all(
-      photos.map(async (photo) => ({
-        contents: await service.getOriginal(photo.id),
-        path: photo.filename,
-      })),
+    const archive = await recordActivity(
+      services,
+      "photo.archive.download",
+      { kind: "photo-archive", path: `${photoIds.length} selected photos` },
+      async () => {
+        const service = await serviceFor(services);
+        const photos = [...new Set(photoIds)].map((photoId) => service.getPhoto(photoId));
+        const entries = await Promise.all(
+          photos.map(async (photo) => ({
+            contents: await service.getOriginal(photo.id),
+            path: photo.filename,
+          })),
+        );
+        return createZip(entries);
+      },
     );
-    const archive = createZip(entries);
     return new Response(exactArrayBuffer(archive), {
       headers: {
         "cache-control": "no-store",
@@ -107,9 +130,17 @@ export const registerPhotoRoutes = (app: AppInstance, services: AppServices): vo
   });
 
   app.get("/api/v1/photos/:id/original", async (context) => {
-    const service = await serviceFor(services);
-    const photo = service.getPhoto(context.req.param("id"));
-    const contents = await service.getOriginal(photo.id);
+    const photoId = context.req.param("id");
+    const { contents, photo } = await recordActivity(
+      services,
+      "photo.download",
+      { kind: "photo", path: photoId },
+      async () => {
+        const service = await serviceFor(services);
+        const photo = service.getPhoto(photoId);
+        return { contents: await service.getOriginal(photo.id), photo };
+      },
+    );
     return new Response(exactArrayBuffer(contents), {
       headers: {
         "cache-control": "no-store",

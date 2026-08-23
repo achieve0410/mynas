@@ -1,9 +1,10 @@
+import type { MiddlewareHandler } from "hono";
 import { z } from "zod";
 
 import { AuthError } from "../../../packages/auth/src/auth";
 import { MYNAS_VERSION } from "../../../packages/version/src/version";
 
-import type { AppInstance, AppServices } from "./types";
+import type { AppEnvironment, AppInstance, AppServices } from "./types";
 
 const credentialsSchema = z.object({
   password: z.string().min(12),
@@ -101,7 +102,7 @@ export const registerPublicAuthRoutes = (app: AppInstance, services: AppServices
 };
 
 export const registerAuthMiddleware = (app: AppInstance, services: AppServices): void => {
-  app.use("/api/v1/*", async (context, next) => {
+  const requireAuthentication: MiddlewareHandler<AppEnvironment> = async (context, next) => {
     const token = bearerToken(context.req.header("authorization"));
     if (token === null) {
       return context.json(
@@ -118,7 +119,9 @@ export const registerAuthMiddleware = (app: AppInstance, services: AppServices):
       return context.json({ error: { code: "unauthorized", message: "invalid token" } }, 401);
     }
     await next();
-  });
+  };
+  app.use("/api/v1/*", requireAuthentication);
+  app.use("/api/activity", requireAuthentication);
 };
 
 export const registerProtectedAuthRoutes = (app: AppInstance, services: AppServices): void => {

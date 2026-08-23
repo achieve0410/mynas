@@ -1,6 +1,6 @@
 import type { Database } from "bun:sqlite";
 
-export const CURRENT_SCHEMA_VERSION = 6;
+export const CURRENT_SCHEMA_VERSION = 7;
 
 export const migrate = (database: Database): void => {
   database.exec(`
@@ -151,6 +151,31 @@ export const migrate = (database: Database): void => {
 
     CREATE INDEX IF NOT EXISTS maintenance_runs_kind_time_idx
       ON maintenance_runs (kind, started_at DESC);
+
+    CREATE TABLE IF NOT EXISTS activity_events (
+      sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+      id TEXT NOT NULL UNIQUE,
+      occurred_at TEXT NOT NULL,
+      action TEXT NOT NULL,
+      outcome TEXT NOT NULL CHECK (outcome IN ('success', 'failure')),
+      resource_kind TEXT,
+      resource_path TEXT,
+      error_code TEXT,
+      error_message TEXT,
+      CHECK (
+        (resource_kind IS NULL AND resource_path IS NULL)
+        OR
+        (resource_kind IS NOT NULL AND resource_path IS NOT NULL)
+      ),
+      CHECK (
+        (outcome = 'success' AND error_code IS NULL AND error_message IS NULL)
+        OR
+        (outcome = 'failure' AND error_code IS NOT NULL AND error_message IS NOT NULL)
+      )
+    );
+
+    CREATE INDEX IF NOT EXISTS activity_events_time_idx
+      ON activity_events (occurred_at DESC, sequence DESC);
   `);
 
   const photoTableSql = database

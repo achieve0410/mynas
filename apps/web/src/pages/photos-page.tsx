@@ -1,21 +1,18 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, Download, ImagePlus, Images, Plus } from "lucide-react";
+import { Download, ImagePlus, Plus } from "lucide-react";
 import { useCallback, useMemo, useRef, useState } from "react";
 
 import { api } from "../api";
 import { AlbumDialog } from "../components/album-dialog";
+import type { LibraryRefreshState } from "../components/file-library-controls";
+import { PhotoLibraryControls } from "../components/photo-library-controls";
 import { PhotoLightbox } from "../components/photo-lightbox";
+import { PhotoTimeline } from "../components/photo-timeline";
 import { PhotoTransferControls } from "../components/photo-transfer-controls";
-import { ProtectedImage } from "../components/protected-image";
+import { TransferProgressList } from "../components/transfer-progress-list";
+import { useDownloadTransfer } from "../hooks/use-download-transfer";
 import { useVolumeHealth } from "../hooks/use-volume-health";
 import type { Photo } from "../schemas";
-
-const timelineLabel = (date: string): string =>
-  new Intl.DateTimeFormat(undefined, {
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-  }).format(new Date(date));
 
 const timelineDayKey = (date: string): string => {
   const local = new Date(date);
@@ -28,22 +25,43 @@ export const PhotosPage = () => {
   const queryClient = useQueryClient();
   const photos = useQuery({ queryFn: api.listPhotos, queryKey: ["photos"] });
   const writeAvailability = useVolumeHealth("photos");
+  const [search, setSearch] = useState("");
+  const [sort, setSort] = useState<"filename" | "newest" | "oldest" | "type">("newest");
+  const [density, setDensity] = useState<"large" | "medium" | "small">("medium");
+  const [refreshState, setRefreshState] = useState<LibraryRefreshState>("idle");
+  const visiblePhotos = useMemo(() => {
+    const normalizedSearch = search.trim().toLocaleLowerCase();
+    const filtered = (photos.data ?? []).filter((photo) =>
+      photo.filename.toLocaleLowerCase().includes(normalizedSearch),
+    );
+    return [...filtered].sort((left, right) => {
+      if (sort === "filename") {
+        return left.filename.localeCompare(right.filename);
+      }
+      if (sort === "type") {
+        return (
+          left.format.localeCompare(right.format) || left.filename.localeCompare(right.filename)
+        );
+      }
+      const timeOrder = left.capturedAt.localeCompare(right.capturedAt);
+      return sort === "oldest" ? timeOrder : -timeOrder;
+    });
+  }, [photos.data, search, sort]);
   const timelineGroups = useMemo(() => {
     const grouped = new Map<string, Photo[]>();
-    for (const photo of photos.data ?? []) {
+    for (const photo of visiblePhotos) {
       const day = timelineDayKey(photo.capturedAt);
       grouped.set(day, [...(grouped.get(day) ?? []), photo]);
     }
     return [...grouped.values()];
-  }, [photos.data]);
+  }, [visiblePhotos]);
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
   const [lightboxPhoto, setLightboxPhoto] = useState<Photo | null>(null);
   const [showAlbumDialog, setShowAlbumDialog] = useState(false);
   const [announcement, setAnnouncement] = useState("");
   const albumTrigger = useRef<HTMLButtonElement>(null);
   const lightboxTrigger = useRef<HTMLElement | null>(null);
-
-  const [pendingDownload, setPendingDownload] = useState(false);
+  const archiveDownload = useDownloadTransfer();
   const closeLightbox = useCallback(() => {
     setLightboxPhoto(null);
     lightboxTrigger.current?.focus();
@@ -67,10 +85,15 @@ export const PhotosPage = () => {
       return next;
     });
   };
-  const lightboxIndex = photos.data?.findIndex(({ id }) => id === lightboxPhoto?.id) ?? -1;
+  const lightboxIndex = visiblePhotos.findIndex(({ id }) => id === lightboxPhoto?.id);
 
   return (
-    <div className="page photo-page">
+    <div
+      className="page photo-page photo-library"
+      data-density={density}
+      data-refresh-state={refreshState}
+      data-testid="photo-library"
+    >
       <header className="page-heading photo-heading">
         <div>
           <span className="eyebrow">Protected memories</span>
@@ -90,20 +113,18 @@ export const PhotosPage = () => {
           </button>
           <button
             className="button secondary"
-            disabled={selected.size === 0 || pendingDownload}
+            disabled={selected.size === 0 || archiveDownload.isDownloading}
             onClick={async () => {
-              setPendingDownload(true);
-              try {
-                const archive = await api.downloadPhotoArchive([...selected]);
-                const url = URL.createObjectURL(archive);
-                const link = document.createElement("a");
-                link.href = url;
-                link.download = "mynas-photos.zip";
-                link.click();
-                URL.revokeObjectURL(url);
-              } finally {
-                setPendingDownload(false);
-              }
+              await archiveDownload.download({
+                filename: "mynas-photos.zip",
+                init: {
+                  body: JSON.stringify({ photoIds: [...selected] }),
+                  headers: { "content-type": "application/json" },
+                  method: "POST",
+                },
+                label: `${selected.size} selected photos`,
+                path: "/api/v1/photos/archive",
+              });
             }}
             type="button"
           >
@@ -111,6 +132,26 @@ export const PhotosPage = () => {
           </button>
         </div>
       </header>
+      <TransferProgressList kind="photo" operation="download" rows={archiveDownload.rows} />
+
+      <PhotoLibraryControls
+        density={density}
+        onDensityChange={setDensity}
+        onRefresh={() => {
+          setRefreshState("refreshing");
+          void photos
+            .refetch()
+            .then((result) => setRefreshState(result.isError ? "failed" : "complete"));
+        }}
+        onSearchChange={(value) => {
+          setSearch(value);
+          setSelected(new Set());
+        }}
+        onSortChange={setSort}
+        refreshState={refreshState}
+        search={search}
+        sort={sort}
+      />
 
       <PhotoTransferControls
         canWrite={writeAvailability.canWrite}
@@ -132,93 +173,38 @@ export const PhotosPage = () => {
           </div>
         </section>
       )}
-      {photos.isPending ? (
-        <section aria-busy="true" className="loading-state">
-          <span className="image-skeleton" />
-          <span className="image-skeleton" />
-        </section>
-      ) : photos.isError ? (
-        <section className="error-state">
-          <ImagePlus size={24} />
-          <h2>The timeline could not be loaded</h2>
-          <p>{photos.error.message}</p>
-          <button className="button secondary" onClick={() => photos.refetch()} type="button">
-            Retry
-          </button>
-        </section>
-      ) : photos.data?.length ? (
-        timelineGroups.map((group) => (
-          <section className="timeline" key={group[0]?.capturedAt}>
-            <header className="timeline-date">
-              <span>{timelineLabel(group[0]?.capturedAt ?? new Date().toISOString())}</span>
-              <small>{group.length} originals</small>
-            </header>
-            <div className="photo-grid">
-              {group.map((photo) => (
-                <div
-                  className="photo-item"
-                  key={photo.id}
-                  style={{
-                    aspectRatio: `${photo.width} / ${photo.height}`,
-                    flexGrow: photo.width / photo.height,
-                  }}
-                >
-                  <button
-                    aria-label={`Open ${photo.filename}`}
-                    className="photo-button"
-                    data-testid={`photo-${photo.id}`}
-                    onClick={(event) => {
-                      lightboxTrigger.current = event.currentTarget;
-                      setLightboxPhoto(photo);
-                    }}
-                    title={photo.filename}
-                    type="button"
-                  >
-                    <ProtectedImage
-                      alt={photo.filename}
-                      path={`/api/v1/photos/${photo.id}/preview`}
-                    />
-                    <span className="photo-caption">{photo.filename}</span>
-                  </button>
-                  <label className="photo-select">
-                    <input
-                      aria-label={`Select ${photo.filename}`}
-                      checked={selected.has(photo.id)}
-                      data-testid={`photo-select-${photo.id}`}
-                      onChange={(event) => toggleSelected(photo.id, event.target.checked)}
-                      type="checkbox"
-                    />
-                    <span>
-                      <Check size={14} />
-                    </span>
-                  </label>
-                </div>
-              ))}
-            </div>
-          </section>
-        ))
-      ) : (
-        <section className="empty-state">
-          <Images size={30} />
-          <h2>Your timeline is ready</h2>
-          <p>Upload JPEG, PNG, or HEIC originals to create lightweight WebP previews.</p>
-        </section>
-      )}
+      <PhotoTimeline
+        error={photos.error}
+        groups={timelineGroups}
+        isPending={photos.isPending}
+        onOpen={(photo, trigger) => {
+          lightboxTrigger.current = trigger;
+          setLightboxPhoto(photo);
+        }}
+        onRetry={() => {
+          void photos.refetch();
+        }}
+        onToggle={toggleSelected}
+        selected={selected}
+        totalCount={photos.data?.length ?? 0}
+      />
 
       {lightboxPhoto === null ? null : (
         <PhotoLightbox
+          index={lightboxIndex}
           onClose={closeLightbox}
           onNext={
-            lightboxIndex >= 0 && lightboxIndex < (photos.data?.length ?? 0) - 1
-              ? () => setLightboxPhoto(photos.data?.[lightboxIndex + 1] ?? null)
+            lightboxIndex >= 0 && lightboxIndex < visiblePhotos.length - 1
+              ? () => setLightboxPhoto(visiblePhotos[lightboxIndex + 1] ?? null)
               : undefined
           }
           onPrevious={
             lightboxIndex > 0
-              ? () => setLightboxPhoto(photos.data?.[lightboxIndex - 1] ?? null)
+              ? () => setLightboxPhoto(visiblePhotos[lightboxIndex - 1] ?? null)
               : undefined
           }
           photo={lightboxPhoto}
+          total={visiblePhotos.length}
         />
       )}
       {showAlbumDialog ? <AlbumDialog onClose={closeAlbumDialog} photoIds={[...selected]} /> : null}

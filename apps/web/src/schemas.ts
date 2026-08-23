@@ -85,6 +85,23 @@ export const photoSchema = z.object({
 });
 export const photosSchema = z.array(photoSchema);
 
+export const activityEventSchema = z.object({
+  action: z.string().min(1),
+  errorCode: z.string().nullable(),
+  errorMessage: z.string().nullable(),
+  id: z.string().uuid(),
+  occurredAt: z.iso.datetime(),
+  outcome: z.enum(["failure", "success"]),
+  resource: z
+    .object({
+      kind: z.string().min(1),
+      path: z.string().min(1),
+    })
+    .nullable(),
+});
+export const activityEventsSchema = z.array(activityEventSchema);
+export type ActivityEvent = z.infer<typeof activityEventSchema>;
+
 export const jobSchema = z.object({
   error: z.string().nullable(),
   id: z.string().uuid(),

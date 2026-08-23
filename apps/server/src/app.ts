@@ -1,6 +1,7 @@
 import type { Database } from "bun:sqlite";
 import { Hono } from "hono";
 
+import { ActivityRepository } from "../../../packages/activity/src/repository";
 import { AuthService } from "../../../packages/auth/src/auth";
 import { backupCatalogDatabase } from "../../../packages/database/src/catalog-backup";
 import { MaintenanceCoordinator } from "../../../packages/maintenance/src/maintenance";
@@ -8,12 +9,14 @@ import { MaintenanceRepository } from "../../../packages/maintenance/src/reposit
 import { MaintenanceScheduler } from "../../../packages/maintenance/src/scheduler";
 import { StorageRegistry } from "../../../packages/storage/src/registry";
 
+import { registerActivityRoutes } from "./activity-routes";
 import {
   registerAuthMiddleware,
   registerProtectedAuthRoutes,
   registerPublicAuthRoutes,
 } from "./auth-routes";
 import { errorResponse } from "./errors";
+import { registerFileRoutes } from "./file-routes";
 import { registerMaintenanceRoutes } from "./maintenance-routes";
 import { registerPhotoRoutes } from "./photo-routes";
 import { registerStorageRoutes } from "./storage-routes";
@@ -24,6 +27,7 @@ export type AppServiceOptions = {
   readonly dataDir: string;
   readonly database: Database;
   readonly environment: Readonly<Record<string, string | undefined>>;
+  readonly onActivityRecordError?: (error: unknown) => void;
   readonly onMaintenanceError?: (error: unknown) => void;
   readonly peerAddress?: (request: Request) => string;
 };
@@ -53,6 +57,15 @@ export const createAppServices = (options: AppServiceOptions): AppServices => {
     ...(options.onMaintenanceError === undefined ? {} : { onError: options.onMaintenanceError }),
   });
   return {
+    activity: new ActivityRepository(options.database),
+    activityRecordError:
+      options.onActivityRecordError ??
+      ((error) => {
+        process.emitWarning(
+          error instanceof Error ? error : new Error("unknown activity recording error"),
+          { code: "MYNAS_ACTIVITY_RECORD_FAILED" },
+        );
+      }),
     auth: new AuthService(options.database),
     database: options.database,
     maintenance,
@@ -70,7 +83,9 @@ export const createApp = (options: CreateAppOptions): Hono<AppEnvironment> => {
   registerPublicAuthRoutes(app, services);
   registerAuthMiddleware(app, services);
   registerProtectedAuthRoutes(app, services);
+  registerActivityRoutes(app, services);
   registerStorageRoutes(app, services);
+  registerFileRoutes(app, services);
   registerPhotoRoutes(app, services);
   registerMaintenanceRoutes(app, services);
   registerWebRoutes(app, options.environment.MYNAS_WEB_ROOT);

@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import type { CSSProperties } from "react";
 import { useEffect, useState } from "react";
 
 import { api } from "../api";
@@ -6,10 +7,12 @@ import { api } from "../api";
 type ProtectedImageProps = {
   readonly alt: string;
   readonly className?: string;
+  readonly draggable?: boolean;
   readonly path: string;
+  readonly style?: CSSProperties;
 };
 
-export const ProtectedImage = ({ alt, className, path }: ProtectedImageProps) => {
+export const ProtectedImage = ({ alt, className, draggable, path, style }: ProtectedImageProps) => {
   const image = useQuery({
     queryFn: () => api.download(path),
     queryKey: ["protected-image", path],
@@ -41,5 +44,5 @@ export const ProtectedImage = ({ alt, className, path }: ProtectedImageProps) =>
     }
     return <span aria-label={`Loading ${alt}`} className="image-skeleton" role="img" />;
   }
-  return <img alt={alt} className={className} src={source} />;
+  return <img alt={alt} className={className} draggable={draggable} src={source} style={style} />;
 };

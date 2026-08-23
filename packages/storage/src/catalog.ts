@@ -2,7 +2,12 @@ import type { Database } from "bun:sqlite";
 import { isAbsolute } from "node:path";
 
 import { CatalogError } from "./catalog-error";
-import { type FileListCursor, type FileListPage, listCurrentFiles } from "./catalog-listing";
+import {
+  type FileListCursor,
+  type FileListOptions,
+  type FileListPage,
+  listCurrentFiles,
+} from "./catalog-listing";
 
 export { CatalogError, type CatalogErrorCode } from "./catalog-error";
 export type { FileListCursor, FileListEntry, FileListPage } from "./catalog-listing";
@@ -118,8 +123,13 @@ export class FileCatalog {
     return toVersion(row);
   }
 
-  public listCurrent(prefix: string, limit: number, cursor: FileListCursor | null): FileListPage {
-    return listCurrentFiles(this.database, this.volumeId, prefix, limit, cursor);
+  public listCurrent(
+    prefix: string,
+    limit: number,
+    cursor: FileListCursor | null,
+    options: FileListOptions = {},
+  ): FileListPage {
+    return listCurrentFiles(this.database, this.volumeId, prefix, limit, cursor, options);
   }
 
   public listCurrentPaths(): readonly string[] {

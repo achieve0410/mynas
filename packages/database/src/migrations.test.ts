@@ -18,6 +18,7 @@ describe("migrate", () => {
         .map(({ name }) => name);
 
       expect(tables).toContain("api_tokens");
+      expect(tables).toContain("activity_events");
       expect(tables).toContain("file_versions");
       expect(tables).toContain("files");
       expect(tables).toContain("photo_albums");

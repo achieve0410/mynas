@@ -1,6 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import {
+  Activity,
   Album,
+  BookOpen,
   Ellipsis,
   Files,
   Gauge,
@@ -26,9 +28,11 @@ type NavigationItem = {
 const navigation: readonly NavigationItem[] = [
   { icon: Gauge, label: "Overview", path: "/" },
   { icon: HardDrive, label: "Storage", path: "/storage" },
-  { icon: Files, label: "Files", path: "/files" },
+  { icon: Files, label: "Files", path: "/files", testId: "nav-files" },
   { icon: Image, label: "Photos", path: "/photos", testId: "nav-photos" },
   { icon: Album, label: "Albums", path: "/albums", testId: "nav-albums" },
+  { icon: Activity, label: "Activity", path: "/activity", testId: "nav-activity" },
+  { icon: BookOpen, label: "Guide", path: "/guide", testId: "nav-guide" },
   { icon: Settings, label: "Settings", path: "/settings", testId: "nav-settings" },
 ];
 
@@ -82,7 +86,7 @@ export const AppShell = ({ children, onLogout, path }: ShellProps) => {
     ["/", "/files", "/photos"].includes(itemPath),
   );
   const mobileSecondary = navigation.filter(({ path: itemPath }) =>
-    ["/storage", "/albums", "/settings"].includes(itemPath),
+    ["/storage", "/albums", "/activity", "/guide", "/settings"].includes(itemPath),
   );
   const mobileMoreSelected = mobileSecondary.some(({ path: itemPath }) => itemPath === path);
   const closeMobileMenu = () => {

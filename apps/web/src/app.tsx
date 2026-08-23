@@ -2,9 +2,11 @@ import { useState } from "react";
 
 import { api, SESSION_KEY, sessionToken } from "./api";
 import { AppShell } from "./components/shell";
+import { ActivityPage } from "./pages/activity-page";
 import { AlbumsPage } from "./pages/albums-page";
 import { AuthPage } from "./pages/auth-page";
 import { FilesPage } from "./pages/files-page";
+import { GuidePage } from "./pages/guide-page";
 import { OverviewPage } from "./pages/overview-page";
 import { PhotosPage } from "./pages/photos-page";
 import { SettingsPage } from "./pages/settings-page";
@@ -21,6 +23,10 @@ const pageFor = (path: string) => {
       return <PhotosPage />;
     case "/albums":
       return <AlbumsPage />;
+    case "/activity":
+      return <ActivityPage />;
+    case "/guide":
+      return <GuidePage />;
     case "/settings":
       return <SettingsPage />;
     default:

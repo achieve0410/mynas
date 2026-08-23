@@ -14,6 +14,7 @@ type FileBrowserProps = {
   readonly onRetry: () => void;
   readonly onSelectionChange: (selections: readonly FileListEntry[]) => void;
   readonly prefix: string;
+  readonly refreshState: "complete" | "failed" | "idle" | "refreshing";
   readonly selectedPath: string | null;
   readonly selections: readonly FileListEntry[];
 };
@@ -50,10 +51,16 @@ export const FileBrowser = ({
   onRetry,
   onSelectionChange,
   prefix,
+  refreshState,
   selectedPath,
   selections,
 }: FileBrowserProps) => (
-  <section aria-labelledby="file-browser-title" className="section-block file-browser">
+  <section
+    aria-labelledby="file-browser-title"
+    className="section-block file-browser"
+    data-refresh-state={refreshState}
+    data-testid="file-browser"
+  >
     <div className="section-heading compact">
       <div>
         <span className="eyebrow">Catalog view</span>
@@ -117,6 +124,7 @@ export const FileBrowser = ({
                   aria-label={`Select ${name}`}
                   checked={checked}
                   className="file-entry-checkbox"
+                  data-testid={`file-select-${entry.path}`}
                   onChange={() =>
                     onSelectionChange(
                       checked

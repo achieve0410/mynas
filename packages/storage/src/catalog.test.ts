@@ -70,4 +70,43 @@ describe("FileCatalog browsing", () => {
       expect(() => catalog.listCurrent("", limit, null), String(limit)).toThrow("invalid");
     }
   });
+
+  test("searches every direct child and paginates type ordering", () => {
+    const catalog = createCatalog();
+    add(catalog, "documents/z-report/inside.txt", "a");
+    add(catalog, "documents/a-notes/inside.txt", "b");
+    add(catalog, "documents/report-final.pdf", "c");
+    add(catalog, "documents/report-draft.txt", "d");
+    add(catalog, "documents/summary.txt", "e");
+    add(catalog, "documents/Ärger.txt", "f");
+
+    expect(
+      catalog.listCurrent("documents/", 50, null, {
+        search: "ärger",
+        sort: "name",
+      }).entries,
+    ).toEqual([expect.objectContaining({ kind: "file", path: "documents/Ärger.txt" })]);
+
+    const first = catalog.listCurrent("documents/", 2, null, {
+      search: "REPORT",
+      sort: "type",
+    });
+    expect(first.entries).toEqual([
+      { kind: "folder", path: "documents/z-report" },
+      expect.objectContaining({ kind: "file", path: "documents/report-draft.txt" }),
+    ]);
+    expect(first.nextCursor).toEqual({
+      kind: "file",
+      path: "documents/report-draft.txt",
+    });
+
+    const second = catalog.listCurrent("documents/", 2, first.nextCursor, {
+      search: "report",
+      sort: "type",
+    });
+    expect(second.entries).toEqual([
+      expect.objectContaining({ kind: "file", path: "documents/report-final.pdf" }),
+    ]);
+    expect(second.nextCursor).toBeNull();
+  });
 });

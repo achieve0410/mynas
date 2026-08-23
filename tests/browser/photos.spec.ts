@@ -116,7 +116,9 @@ test("photo flagship completes the real browser journey", async ({ browser, page
   await directoryUploadCompleted;
   expect(batchStatuses.toSorted()).toEqual([201, 400]);
   await expect(page.getByText("1 of 2 photos uploaded.")).toBeVisible();
-  await expect(page.getByText("사진-묶음/unsupported.txt")).toBeVisible();
+  await expect(
+    page.locator(".upload-failures").getByText("사진-묶음/unsupported.txt"),
+  ).toBeVisible();
   await expect(page.getByAltText("사진-묶음/중첩/iphone.heic")).toBeVisible();
 
   await page.getByTestId(`photo-select-${ingest.photo.id}`).check();
@@ -215,11 +217,14 @@ test("photo flagship completes the real browser journey", async ({ browser, page
         await expect(page.getByTestId("album-photo-count")).toHaveText("1");
       }
       await page.evaluate(() => document.fonts.ready);
+      const documentWidth = await page.evaluate(() => ({
+        client: document.documentElement.clientWidth,
+        scroll: document.documentElement.scrollWidth,
+      }));
       expect(
-        await page.evaluate(
-          () => document.documentElement.scrollWidth === document.documentElement.clientWidth,
-        ),
-      ).toBe(true);
+        documentWidth.scroll,
+        `${viewportName}:${routeName} document width ${documentWidth.scroll}/${documentWidth.client}`,
+      ).toBe(documentWidth.client);
       const screenshot =
         viewportName === "desktop"
           ? desktopScreenshot

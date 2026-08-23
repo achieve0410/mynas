@@ -1,6 +1,7 @@
 import type { Database } from "bun:sqlite";
 import type { Hono } from "hono";
 
+import type { ActivityRepository } from "../../../packages/activity/src/repository";
 import type { AuthService, User } from "../../../packages/auth/src/auth";
 import type { MaintenanceCoordinator } from "../../../packages/maintenance/src/maintenance";
 import type { MaintenanceScheduler } from "../../../packages/maintenance/src/scheduler";
@@ -15,6 +16,8 @@ export type AppEnvironment = {
 export type AppInstance = Hono<AppEnvironment>;
 
 export type AppServices = {
+  readonly activity: ActivityRepository;
+  readonly activityRecordError: (error: unknown) => void;
   readonly auth: AuthService;
   readonly database: Database;
   readonly maintenance: MaintenanceCoordinator;

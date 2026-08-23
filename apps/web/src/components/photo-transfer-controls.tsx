@@ -1,7 +1,8 @@
 import { FolderUp, Upload } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
-import { api } from "../api";
+import { uploadWithProgress } from "../transfer-api";
+import { TransferProgressList, type TransferRow } from "./transfer-progress-list";
 
 type PhotoTransferControlsProps = {
   readonly canWrite: boolean;
@@ -10,14 +11,14 @@ type PhotoTransferControlsProps = {
 };
 
 type UploadSelection = {
-  readonly files: readonly File[];
-  readonly kind: "directory" | "files";
+  readonly items: readonly {
+    readonly file: File;
+    readonly id: string;
+    readonly path: string;
+  }[];
 };
 
 const photoTypes = ".heic,.jpeg,.jpg,.png,image/heic,image/heif,image/jpeg,image/png";
-
-const pathFor = (file: File, kind: UploadSelection["kind"]): string =>
-  kind === "directory" && file.webkitRelativePath.length > 0 ? file.webkitRelativePath : file.name;
 
 export const PhotoTransferControls = ({
   canWrite,
@@ -26,40 +27,116 @@ export const PhotoTransferControls = ({
 }: PhotoTransferControlsProps) => {
   const [selection, setSelection] = useState<UploadSelection | null>(null);
   const [failedPaths, setFailedPaths] = useState<readonly string[]>([]);
+  const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const [transferRows, setTransferRows] = useState<readonly TransferRow[]>([]);
+  const controller = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    return () => {
+      controller.current?.abort();
+    };
+  }, []);
 
   const upload = async (): Promise<void> => {
     if (selection === null) {
       return;
     }
     setFailedPaths([]);
+    setError(null);
     setMessage(null);
     setPending(true);
+    setTransferRows(
+      selection.items.map(({ file, id, path }) => ({
+        id,
+        label: path,
+        loaded: 0,
+        percent: 0,
+        status: "queued",
+        total: file.size,
+      })),
+    );
+    const uploadController = new AbortController();
+    controller.current = uploadController;
     const failures: string[] = [];
     let uploaded = 0;
-    for (const file of selection.files) {
-      const path = pathFor(file, selection.kind);
+    for (const { file, id, path } of selection.items) {
+      if (uploadController.signal.aborted) {
+        break;
+      }
       try {
-        await api.uploadPhoto(file, path);
+        setTransferRows((rows) =>
+          rows.map((row) => (row.id === id ? { ...row, status: "transferring" as const } : row)),
+        );
+        await uploadWithProgress(
+          "POST",
+          "/api/v1/photos",
+          file,
+          (progress) => {
+            setTransferRows((rows) =>
+              rows.map((row) => (row.id === id ? { ...row, ...progress } : row)),
+            );
+          },
+          { "x-mynas-filename": encodeURIComponent(path) },
+          uploadController.signal,
+        );
+        setTransferRows((rows) =>
+          rows.map((row) =>
+            row.id === id
+              ? { ...row, loaded: file.size, percent: 100, status: "complete" as const }
+              : row,
+          ),
+        );
         uploaded += 1;
-      } catch {
+      } catch (cause) {
+        setTransferRows((rows) =>
+          rows.map((row) =>
+            row.id === id
+              ? {
+                  ...row,
+                  error: cause instanceof Error ? cause.message : "Upload failed",
+                  status: "failed" as const,
+                }
+              : row,
+          ),
+        );
         failures.push(path);
+        if (uploadController.signal.aborted) {
+          break;
+        }
       }
     }
-    if (uploaded > 0) {
-      await onUploaded();
+    try {
+      if (uploaded > 0) {
+        await onUploaded();
+      }
+      setFailedPaths(failures);
+      setMessage(`${uploaded} of ${selection.items.length} photos uploaded.`);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Catalog refresh failed");
+    } finally {
+      if (controller.current === uploadController) {
+        controller.current = null;
+      }
+      setPending(false);
     }
-    setFailedPaths(failures);
-    setMessage(`${uploaded} of ${selection.files.length} photos uploaded.`);
-    setPending(false);
   };
 
-  const select = (files: FileList | null, kind: UploadSelection["kind"]): void => {
+  const select = (files: FileList | null, kind: "directory" | "files"): void => {
     const selected = files === null ? [] : Array.from(files);
-    setSelection(selected.length === 0 ? null : { files: selected, kind });
+    const items = selected.map((file) => {
+      const path =
+        kind === "directory" && file.webkitRelativePath.length > 0
+          ? file.webkitRelativePath
+          : file.name;
+      return { file, id: path, path };
+    });
+    setSelection(items.length === 0 ? null : { items });
     setFailedPaths([]);
+    setError(null);
     setMessage(null);
+    setTransferRows([]);
   };
 
   return (
@@ -110,12 +187,18 @@ export const PhotoTransferControls = ({
           }}
           type="button"
         >
-          {pending ? "Uploading..." : `Upload ${selection?.files.length ?? 0}`}
+          {pending ? "Uploading..." : `Upload ${selection?.items.length ?? 0}`}
         </button>
       </div>
       {message === null ? null : (
         <p aria-live="polite" className="form-success">
           {message}
+        </p>
+      )}
+      <TransferProgressList kind="photo" rows={transferRows} />
+      {error === null ? null : (
+        <p aria-live="polite" className="form-error">
+          {error}
         </p>
       )}
       {failedPaths.length === 0 ? null : (

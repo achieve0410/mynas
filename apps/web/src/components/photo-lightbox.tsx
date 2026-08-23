@@ -1,30 +1,57 @@
-import { ArrowLeft, ArrowRight, Download, X } from "lucide-react";
-import { useEffect, useRef } from "react";
+import { ArrowLeft, ArrowRight, Download, Minus, Plus, RotateCcw, X } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
-import { api } from "../api";
+import { useDownloadTransfer } from "../hooks/use-download-transfer";
 import type { Photo } from "../schemas";
 import { ProtectedImage } from "./protected-image";
+import { TransferProgressList } from "./transfer-progress-list";
 
 type PhotoLightboxProps = {
+  readonly index: number;
   readonly onClose: () => void;
   readonly onNext: (() => void) | undefined;
   readonly onPrevious: (() => void) | undefined;
   readonly photo: Photo;
+  readonly total: number;
 };
 
-export const PhotoLightbox = ({ onClose, onNext, onPrevious, photo }: PhotoLightboxProps) => {
+export const PhotoLightbox = ({
+  index,
+  onClose,
+  onNext,
+  onPrevious,
+  photo,
+  total,
+}: PhotoLightboxProps) => {
   const closeButton = useRef<HTMLButtonElement>(null);
   const dialog = useRef<HTMLDialogElement>(null);
+  const next = useRef(onNext);
+  const pointerStart = useRef<{ readonly x: number; readonly y: number } | null>(null);
+  const previous = useRef(onPrevious);
+  const [zoom, setZoom] = useState(100);
+  const [direction, setDirection] = useState<"next" | "previous" | null>(null);
+  const originalDownload = useDownloadTransfer();
+  next.current = onNext;
+  previous.current = onPrevious;
+
+  const move = useCallback(
+    (nextDirection: "next" | "previous", callback: (() => void) | undefined): void => {
+      setDirection(nextDirection);
+      setZoom(100);
+      callback?.();
+    },
+    [],
+  );
 
   useEffect(() => {
     dialog.current?.showModal();
     closeButton.current?.focus();
     const navigate = (event: KeyboardEvent) => {
       if (event.key === "ArrowLeft") {
-        onPrevious?.();
+        move("previous", previous.current);
       }
       if (event.key === "ArrowRight") {
-        onNext?.();
+        move("next", next.current);
       }
     };
     window.addEventListener("keydown", navigate);
@@ -34,7 +61,7 @@ export const PhotoLightbox = ({ onClose, onNext, onPrevious, photo }: PhotoLight
         dialog.current.close();
       }
     };
-  }, [onNext, onPrevious]);
+  }, [move]);
 
   const closeDialog = () => {
     dialog.current?.close();
@@ -42,13 +69,12 @@ export const PhotoLightbox = ({ onClose, onNext, onPrevious, photo }: PhotoLight
   };
 
   const downloadOriginal = async () => {
-    const blob = await api.download(`/api/v1/photos/${photo.id}/original`);
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.download = photo.filename;
-    link.href = url;
-    link.click();
-    URL.revokeObjectURL(url);
+    await originalDownload.download({
+      filename: photo.filename,
+      id: `original:${photo.id}`,
+      label: photo.filename,
+      path: `/api/v1/photos/${photo.id}/original`,
+    });
   };
 
   return (
@@ -63,9 +89,14 @@ export const PhotoLightbox = ({ onClose, onNext, onPrevious, photo }: PhotoLight
     >
       <header className="lightbox-toolbar">
         <div>
-          <strong title={photo.filename}>{photo.filename}</strong>
+          <strong data-testid="photo-viewer-filename" title={photo.filename}>
+            {photo.filename}
+          </strong>
           <span className="mono">
             {photo.width} x {photo.height}
+          </span>
+          <span className="mono lightbox-position" data-testid="photo-viewer-position">
+            {index + 1} / {total}
           </span>
         </div>
         <div className="button-row">
@@ -73,7 +104,9 @@ export const PhotoLightbox = ({ onClose, onNext, onPrevious, photo }: PhotoLight
             aria-label="Previous photo"
             className="button icon-button quiet"
             disabled={onPrevious === undefined}
-            onClick={onPrevious}
+            onClick={() => {
+              move("previous", onPrevious);
+            }}
             type="button"
           >
             <ArrowLeft size={18} />
@@ -81,8 +114,11 @@ export const PhotoLightbox = ({ onClose, onNext, onPrevious, photo }: PhotoLight
           <button
             aria-label="Next photo"
             className="button icon-button quiet"
+            data-testid="photo-next"
             disabled={onNext === undefined}
-            onClick={onNext}
+            onClick={() => {
+              move("next", onNext);
+            }}
             type="button"
           >
             <ArrowRight size={18} />
@@ -90,6 +126,7 @@ export const PhotoLightbox = ({ onClose, onNext, onPrevious, photo }: PhotoLight
           <button
             className="button secondary"
             data-testid="download-original"
+            disabled={originalDownload.isDownloading}
             onClick={downloadOriginal}
             type="button"
           >
@@ -106,8 +143,43 @@ export const PhotoLightbox = ({ onClose, onNext, onPrevious, photo }: PhotoLight
           </button>
         </div>
       </header>
-      <div className="lightbox-stage">
-        <ProtectedImage alt={photo.filename} path={`/api/v1/photos/${photo.id}/preview`} />
+      <div
+        className="lightbox-stage"
+        data-testid="photo-lightbox-stage"
+        onPointerDownCapture={(event) => {
+          pointerStart.current = { x: event.clientX, y: event.clientY };
+          event.currentTarget.setPointerCapture(event.pointerId);
+        }}
+        onPointerUpCapture={(event) => {
+          const start = pointerStart.current;
+          pointerStart.current = null;
+          if (start === null) {
+            return;
+          }
+          const horizontal = event.clientX - start.x;
+          const vertical = event.clientY - start.y;
+          if (Math.abs(horizontal) < 64 || Math.abs(horizontal) <= Math.abs(vertical)) {
+            return;
+          }
+          if (horizontal < 0) {
+            move("next", onNext);
+          } else {
+            move("previous", onPrevious);
+          }
+        }}
+      >
+        <div
+          className="lightbox-image-frame"
+          data-direction={direction ?? "initial"}
+          key={photo.id}
+        >
+          <ProtectedImage
+            alt={photo.filename}
+            draggable={false}
+            path={`/api/v1/photos/${photo.id}/preview`}
+            style={{ transform: `scale(${zoom / 100})` }}
+          />
+        </div>
       </div>
       <details className="lightbox-meta" open>
         <summary>Protected original</summary>
@@ -121,7 +193,39 @@ export const PhotoLightbox = ({ onClose, onNext, onPrevious, photo }: PhotoLight
             <dd className="mono checksum">{photo.checksum}</dd>
           </div>
         </dl>
+        <TransferProgressList kind="photo" operation="download" rows={originalDownload.rows} />
       </details>
+      <fieldset className="lightbox-zoom">
+        <legend className="sr-only">Photo zoom</legend>
+        <button
+          aria-label="Zoom out"
+          className="button icon-button quiet"
+          disabled={zoom <= 50}
+          onClick={() => setZoom((value) => Math.max(50, value - 25))}
+          type="button"
+        >
+          <Minus size={18} />
+        </button>
+        <button
+          aria-label="Reset zoom"
+          className="button secondary zoom-value"
+          data-testid="photo-zoom-value"
+          onClick={() => setZoom(100)}
+          type="button"
+        >
+          <RotateCcw size={15} /> {zoom}%
+        </button>
+        <button
+          aria-label="Zoom in"
+          className="button icon-button quiet"
+          data-testid="photo-zoom-in"
+          disabled={zoom >= 300}
+          onClick={() => setZoom((value) => Math.min(300, value + 25))}
+          type="button"
+        >
+          <Plus size={18} />
+        </button>
+      </fieldset>
     </dialog>
   );
 };

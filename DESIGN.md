@@ -57,10 +57,12 @@ Desktop navigation:
 3. Files
 4. Photos
 5. Albums
-6. Settings
+6. Activity
+7. Guide
+8. Settings
 
 Mobile navigation exposes Overview, Files, Photos, and More. More opens a sheet containing
-Storage, Albums, Settings, and sign-out.
+Storage, Albums, Activity, Guide, Settings, and sign-out.
 
 Routes:
 
@@ -69,9 +71,11 @@ Routes:
 | `/setup`, `/login` | Shared setup/login gate selected by service state | Single focused auth panel |
 | `/` | Assess safety and resume recent work | Volume health board |
 | `/storage` | Manage backends, mirrors, scrub, repair | Backend and mirror controls |
-| `/files` | Transfer or delete a known object path | Exact-path transfer panel |
-| `/photos` | Browse the chronological photo library | Timeline grid |
+| `/files` | Browse folders and find, transfer, or recover protected files | Folder browser |
+| `/photos` | Find and browse the protected photo library | Adjustable timeline grid |
 | `/albums` | Browse collections created from photo selection | Album list |
+| `/activity` | Review recent transfer outcomes and failure reasons | Activity timeline |
+| `/guide` | Learn each menu's purpose, setup, and verification steps | Guide topics |
 | `/settings` | API tokens and service information | Settings sections |
 
 ## 4. App Shell
@@ -203,6 +207,30 @@ Storage, files, tokens, and jobs share one row grammar:
 - Row action menu opens by keyboard and pointer.
 - Destructive actions require explicit confirmation with the affected object named.
 
+### Library toolbar
+
+Files and Photos share a compact discovery toolbar directly below the page heading:
+
+- Search is always visible and filters the active library without hiding its label.
+- Sort options describe the result order in plain language. Files support name and type;
+  Photos support filename, type, and newest/oldest capture time.
+- Refresh is a labeled action with idle, refreshing, and complete states.
+- Photos add a three-option Small/Medium/Large preview-size control. The selected option uses
+  `aria-pressed` and remains available on mobile without horizontal scrolling.
+- Folder rows remain visually distinct from files through icon, label, and grouping. Color is
+  never the only distinction.
+
+### Transfer queue
+
+- Every selected upload becomes one persistent row with filename, size, status, and progress.
+- Status is a typed state: queued, uploading/downloading, complete, or failed.
+- Byte progress comes from the active request. When total bytes are unavailable, show
+  indeterminate progress and the transferred-byte count instead of a fabricated percentage.
+- Completion remains visible in the current screen until the next transfer begins or the user
+  clears it. Failures keep the object name and safe server message.
+- Download actions expose the same downloading/complete/failed states as uploads.
+- A compact live region announces terminal outcomes; the row remains the visual source of truth.
+
 ### Buttons
 
 - Primary: solid emerald, dark text, one per region.
@@ -222,7 +250,8 @@ Storage, files, tokens, and jobs share one row grammar:
 ### Photo timeline
 
 - Sticky date heading followed by a justified CSS grid.
-- Desktop row target: 156px; mobile row target: 112px.
+- Preview density targets: Small 112px, Medium 156px, Large 220px on desktop. Mobile targets
+  are Small 88px, Medium 112px, and Large 156px.
 - Native aspect ratio is preserved with `object-fit: cover`.
 - Preview loads first; original is only fetched by explicit download.
 - Selection is a visible top-left check control, not a hover-only affordance.
@@ -240,9 +269,33 @@ Storage, files, tokens, and jobs share one row grammar:
 - Image uses `object-fit: contain`; metadata appears in a collapsible side panel.
 - `Escape` closes, left/right arrows navigate, and focus returns to the originating thumbnail.
 - Previous/next controls disable at collection boundaries; navigation never wraps silently.
+- Zoom out, reset, and zoom in controls expose the exact percentage. Zoom is bounded from 50%
+  to 300% and resets when the active photo changes.
+- A horizontal pointer swipe beyond 64px navigates in the swipe direction. Vertical movement,
+  toolbar interaction, and shorter drags do not navigate.
+- Photo transitions use transform and opacity only. The direction follows the navigation
+  direction, and reduced motion removes the translation.
 - Focus is trapped while open.
 - Download original is a labeled button, not an icon-only control.
 - On mobile, metadata becomes a bottom sheet and controls remain clear of safe areas.
+
+### Activity timeline
+
+- Events are durable server records, newest first, and survive reloads.
+- Each row shows action, success/failure, affected filename or resource, relative/absolute time,
+  and a concise failure reason when present.
+- Status and action filters are native labeled controls. Refresh has an explicit request state.
+- Activity never exposes credentials, raw request bodies, local storage roots, or file contents.
+- Routine listings, health polling, and photo preview requests are not activity events.
+
+### Guide topics
+
+- Guide is one navigation destination, not duplicated help panels on every page.
+- Topic controls cover Overview, Files, Photos, Albums, Activity, and Settings.
+- Every topic has three semantic sections identified by machine-consumed section keys:
+  purpose, setup, and verification. Tests assert those keys rather than prose.
+- Desktop uses a topic rail and reading pane. Mobile uses a horizontally wrapping segmented
+  topic control above one reading pane.
 
 ## 7. Interaction and Motion
 
@@ -253,6 +306,11 @@ Storage, files, tokens, and jobs share one row grammar:
 - Respect `prefers-reduced-motion`; transitions become immediate except progress indicators.
 - Upload progress is driven by request state. Completion is the exact API response/job state,
   never a timer.
+- Download progress is driven by streamed response bytes and terminal response completion.
+- Transfer rows adapt the beui.dev file-upload mechanism: stable rows, explicit status changes,
+  transform/opacity feedback, and no animation dependency or decorative loop.
+- Lightbox swipe uses pointer capture and a 64px horizontal threshold; the image settles over
+  220ms. Zoom uses 120ms transform feedback.
 - Scrub and repair state is driven by explicit operation responses.
 
 ## 8. State Inventory
@@ -280,6 +338,8 @@ Toasts are never the sole carrier of an error or data-loss warning.
 - Dialogs and lightbox restore focus to their triggers.
 - Photos use filename-derived alt text until user-authored descriptions exist.
 - Live regions announce upload completion, repair result, and authentication errors.
+- Search, sort, preview size, refresh, zoom, and navigation controls have persistent labels.
+- Progress bars expose `aria-valuenow`, `aria-valuemin`, and `aria-valuemax` when determinate.
 - Touch targets are at least 44x44px.
 
 ## 10. Responsive Acceptance
@@ -298,6 +358,9 @@ At each viewport:
 - Navigation remains reachable by keyboard.
 - Storage state and recovery action remain above secondary history.
 - Photo lightbox opens and closes by keyboard.
+- Files and Photos discovery controls wrap without clipping and retain 44px touch targets.
+- Activity rows and Guide topics never require horizontal scrolling.
+- Lightbox zoom and previous/next controls remain reachable above the mobile safe area.
 
 ## 11. Implementation Rules
 

@@ -26,6 +26,12 @@ export const startServer = async (options: StartServerOptions): Promise<StartedS
       dataDir: options.dataDir,
       database,
       environment: options.environment,
+      onActivityRecordError: (error) => {
+        logger.error(
+          { err: error instanceof Error ? error : new Error("unknown activity recording error") },
+          "activity recording failed",
+        );
+      },
       onMaintenanceError: (error) => {
         logger.error(
           { err: error instanceof Error ? error : new Error("unknown maintenance error") },

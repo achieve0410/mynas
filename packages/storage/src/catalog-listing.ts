@@ -2,6 +2,7 @@ import type { Database } from "bun:sqlite";
 import { isAbsolute } from "node:path";
 
 import { CatalogError } from "./catalog-error";
+import { listUnicodeCurrentFiles } from "./catalog-unicode-search";
 
 export type FileListCursor = {
   readonly kind: "file" | "folder";
@@ -26,6 +27,11 @@ export type FileListPage = {
   readonly entries: readonly FileListEntry[];
   readonly nextCursor: FileListCursor | null;
   readonly prefix: string;
+};
+
+export type FileListOptions = {
+  readonly search?: string;
+  readonly sort?: "name" | "type";
 };
 
 type BrowseRow = {
@@ -74,20 +80,61 @@ const validateCursor = (cursor: FileListCursor | null, prefix: string): FileList
   return cursor;
 };
 
+const searchPattern = (search: string | undefined): string | null => {
+  const normalized = search?.trim() ?? "";
+  if (normalized.length === 0) {
+    return null;
+  }
+  if (normalized.length > 256 || normalized.includes("\0")) {
+    throw new CatalogError("invalid_page", "invalid file search");
+  }
+  return `%${normalized.toLocaleLowerCase().replaceAll("\\", "\\\\").replaceAll("%", "\\%").replaceAll("_", "\\_")}%`;
+};
+
+const containsNonAscii = (value: string): boolean =>
+  [...value].some((character) => (character.codePointAt(0) ?? 0) > 127);
+
 export const listCurrentFiles = (
   database: Database,
   volumeId: string,
   prefix: string,
   limit: number,
   cursor: FileListCursor | null,
+  options: FileListOptions = {},
 ): FileListPage => {
   const safePrefix = validatePrefix(prefix);
   if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
     throw new CatalogError("invalid_page", "invalid file page limit");
   }
   const safeCursor = validateCursor(cursor, safePrefix);
+  const pattern = searchPattern(options.search);
+  const sort = options.sort ?? "name";
+  const normalizedSearch = options.search?.trim().toLocaleLowerCase() ?? "";
+  if (pattern !== null && containsNonAscii(normalizedSearch)) {
+    return listUnicodeCurrentFiles({
+      cursor: safeCursor,
+      fetchPage: (scanCursor) =>
+        listCurrentFiles(database, volumeId, safePrefix, 100, scanCursor, { sort }),
+      limit,
+      prefix: safePrefix,
+      search: normalizedSearch,
+    });
+  }
   const cursorPath = safeCursor?.path ?? null;
   const cursorKindRank = safeCursor?.kind === "file" ? 1 : 0;
+  const cursorClause =
+    sort === "type"
+      ? `(? IS NULL
+          OR kind_rank > ?
+          OR (kind_rank = ? AND path > ?))`
+      : `(? IS NULL
+          OR path > ?
+          OR (path = ? AND kind_rank > ?))`;
+  const orderClause = sort === "type" ? "kind_rank, path" : "path, kind_rank";
+  const cursorValues =
+    sort === "type"
+      ? ([cursorKindRank, cursorKindRank, cursorPath] as const)
+      : ([cursorPath, cursorPath, cursorKindRank] as const);
   const rows = database
     .query<
       BrowseRow,
@@ -98,9 +145,12 @@ export const listCurrentFiles = (
         string,
         string,
         string | null,
+        string,
         string | null,
         string | null,
-        number,
+        string | number | null,
+        string | number | null,
+        string | number | null,
         number,
       ]
     >(
@@ -130,13 +180,23 @@ export const listCurrentFiles = (
            CASE WHEN instr(relative_path, '/') = 0 THEN blob_size ELSE NULL END AS blob_size,
            CASE WHEN instr(relative_path, '/') = 0 THEN created_at ELSE NULL END AS created_at
          FROM current_files
+       ),
+       distinct_entries AS (
+         SELECT DISTINCT
+           kind,
+           path,
+           version_id,
+           blob_checksum,
+           blob_size,
+           created_at,
+           CASE kind WHEN 'folder' THEN 0 ELSE 1 END AS kind_rank
+         FROM entries
        )
-       SELECT DISTINCT kind, path, version_id, blob_checksum, blob_size, created_at
-       FROM entries
-       WHERE ? IS NULL
-          OR path > ?
-          OR (path = ? AND CASE kind WHEN 'folder' THEN 0 ELSE 1 END > ?)
-       ORDER BY path, CASE kind WHEN 'folder' THEN 0 ELSE 1 END
+       SELECT kind, path, version_id, blob_checksum, blob_size, created_at
+       FROM distinct_entries
+         WHERE (? IS NULL OR lower(substr(path, length(?) + 1)) LIKE ? ESCAPE '\\')
+         AND ${cursorClause}
+       ORDER BY ${orderClause}
        LIMIT ?`,
     )
     .all(
@@ -145,10 +205,13 @@ export const listCurrentFiles = (
       safePrefix,
       safePrefix,
       safePrefix,
+      pattern,
+      safePrefix,
+      pattern,
       cursorPath,
-      cursorPath,
-      cursorPath,
-      cursorKindRank,
+      cursorValues[0],
+      cursorValues[1],
+      cursorValues[2],
       limit + 1,
     );
   const pageRows = rows.slice(0, limit);
