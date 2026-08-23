@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -7,6 +7,29 @@ const qaRoot = await mkdtemp(join(tmpdir(), "mynas-playwright-"));
 const dataDirectory = join(qaRoot, "data");
 const maintenanceDirectory = join(qaRoot, "maintenance", "백업-保管");
 const webDirectory = join(qaRoot, "web");
+const albumWorkflowSpec = "tests/browser/album-workflows.spec.ts";
+const libraryManagementSpec = "tests/browser/library-management.spec.ts";
+const photoPerformanceSpec = "tests/browser/photo-performance.spec.ts";
+const additiveSpecs = [albumWorkflowSpec, libraryManagementSpec, photoPerformanceSpec];
+const browserSpecs = (
+  await readdir(join(repositoryRoot, "tests", "browser"), {
+    withFileTypes: true,
+  })
+)
+  .filter((entry) => entry.isFile() && entry.name.endsWith(".spec.ts"))
+  .map((entry) => `tests/browser/${entry.name}`)
+  .sort();
+const requestedSpecs = process.argv.slice(2);
+const selectedSpecs = requestedSpecs.length === 0 ? browserSpecs : requestedSpecs;
+const missingSpecs = selectedSpecs.filter((path) => !browserSpecs.includes(path));
+if (missingSpecs.length > 0) {
+  throw new Error(`browser workflow spec is missing: ${missingSpecs.join(", ")}`);
+}
+if (additiveSpecs.some((path) => !browserSpecs.includes(path))) {
+  throw new Error("additive browser workflow spec is missing");
+}
+const existingSpecs = selectedSpecs.filter((path) => !additiveSpecs.includes(path));
+const selectedAdditiveSpecs = additiveSpecs.filter((path) => selectedSpecs.includes(path));
 const serverEnvironment = {
   ...process.env,
   MYNAS_BROWSER_DATA_DIR: dataDirectory,
@@ -75,7 +98,7 @@ try {
   if (serverPort === undefined) {
     throw new Error("browser QA server did not report its bound port");
   }
-  exitCode = await run(["bunx", "playwright", "test"], {
+  const browserEnvironment = {
     ...process.env,
     MYNAS_BROWSER_BASE_URL: `http://127.0.0.1:${serverPort}`,
     MYNAS_BROWSER_DATA_DIR: dataDirectory,
@@ -84,8 +107,22 @@ try {
     MYNAS_BROWSER_MAINTENANCE_DIR: maintenanceDirectory,
     MYNAS_BROWSER_PHOTOS_ARTIFACT_DIR: join(qaRoot, "artifacts", "photos"),
     MYNAS_BROWSER_PLAYWRIGHT_OUTPUT: join(qaRoot, "playwright-results"),
+    MYNAS_BROWSER_PROTECTION_ARTIFACT_DIR:
+      process.env.MYNAS_BROWSER_PROTECTION_ARTIFACT_DIR ?? join(qaRoot, "artifacts", "protection"),
     MYNAS_BROWSER_SERVER: "external",
-  });
+    MYNAS_MANAGEMENT_EVIDENCE_DIR:
+      process.env.MYNAS_MANAGEMENT_EVIDENCE_DIR ?? join(qaRoot, "artifacts", "management"),
+  };
+  exitCode =
+    existingSpecs.length === 0
+      ? 0
+      : await run(["bunx", "playwright", "test", ...existingSpecs], browserEnvironment);
+  for (const spec of selectedAdditiveSpecs) {
+    if (exitCode !== 0) {
+      break;
+    }
+    exitCode = await run(["bunx", "playwright", "test", spec], browserEnvironment);
+  }
 } finally {
   server.kill();
   await server.exited;

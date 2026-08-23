@@ -1,67 +1,76 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Download, ImagePlus, Plus } from "lucide-react";
+import { ImagePlus } from "lucide-react";
 import { useCallback, useMemo, useRef, useState } from "react";
 
 import { api } from "../api";
 import { AlbumDialog } from "../components/album-dialog";
 import type { LibraryRefreshState } from "../components/file-library-controls";
+import { PhotoDeleteDialog } from "../components/photo-delete-dialog";
 import { PhotoLibraryControls } from "../components/photo-library-controls";
 import { PhotoLightbox } from "../components/photo-lightbox";
+import { PhotoSelectionToolbar } from "../components/photo-selection-toolbar";
 import { PhotoTimeline } from "../components/photo-timeline";
 import { PhotoTransferControls } from "../components/photo-transfer-controls";
-import { TransferProgressList } from "../components/transfer-progress-list";
 import { useDownloadTransfer } from "../hooks/use-download-transfer";
+import { useProgressiveWindow } from "../hooks/use-progressive-window";
 import { useVolumeHealth } from "../hooks/use-volume-health";
 import type { Photo } from "../schemas";
-
-const timelineDayKey = (date: string): string => {
-  const local = new Date(date);
-  return [local.getFullYear(), local.getMonth() + 1, local.getDate()]
-    .map((part) => String(part).padStart(2, "0"))
-    .join("-");
-};
+import {
+  albumNamesForPhoto,
+  filterAndSortPhotos,
+  groupPhotosByCapturedDay,
+  type PhotoSort,
+} from "./photo-page-collections";
 
 export const PhotosPage = () => {
   const queryClient = useQueryClient();
-  const photos = useQuery({ queryFn: api.listPhotos, queryKey: ["photos"] });
+  const photos = useQuery({
+    queryFn: api.listPhotos,
+    queryKey: ["photos"],
+    refetchInterval: 3_000,
+  });
   const writeAvailability = useVolumeHealth("photos");
   const [search, setSearch] = useState("");
-  const [sort, setSort] = useState<"filename" | "newest" | "oldest" | "type">("newest");
+  const [sort, setSort] = useState<PhotoSort>("newest");
   const [density, setDensity] = useState<"large" | "medium" | "small">("medium");
   const [refreshState, setRefreshState] = useState<LibraryRefreshState>("idle");
-  const visiblePhotos = useMemo(() => {
-    const normalizedSearch = search.trim().toLocaleLowerCase();
-    const filtered = (photos.data ?? []).filter((photo) =>
-      photo.filename.toLocaleLowerCase().includes(normalizedSearch),
-    );
-    return [...filtered].sort((left, right) => {
-      if (sort === "filename") {
-        return left.filename.localeCompare(right.filename);
-      }
-      if (sort === "type") {
-        return (
-          left.format.localeCompare(right.format) || left.filename.localeCompare(right.filename)
-        );
-      }
-      const timeOrder = left.capturedAt.localeCompare(right.capturedAt);
-      return sort === "oldest" ? timeOrder : -timeOrder;
-    });
-  }, [photos.data, search, sort]);
-  const timelineGroups = useMemo(() => {
-    const grouped = new Map<string, Photo[]>();
-    for (const photo of visiblePhotos) {
-      const day = timelineDayKey(photo.capturedAt);
-      grouped.set(day, [...(grouped.get(day) ?? []), photo]);
-    }
-    return [...grouped.values()];
-  }, [visiblePhotos]);
-  const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
   const [lightboxPhoto, setLightboxPhoto] = useState<Photo | null>(null);
+  const albums = useQuery({
+    enabled: lightboxPhoto !== null,
+    queryFn: api.listAlbums,
+    queryKey: ["albums"],
+  });
+  const visiblePhotos = useMemo(
+    () => filterAndSortPhotos(photos.data ?? [], search, sort),
+    [photos.data, search, sort],
+  );
+  const photoWindow = useProgressiveWindow(
+    visiblePhotos,
+    `${search}\0${sort}\0${visiblePhotos.length}\0${visiblePhotos[0]?.id ?? ""}`,
+  );
+  const timelineGroups = groupPhotosByCapturedDay(photoWindow.items);
+  const lightboxAlbumNames = useMemo(
+    () => albumNamesForPhoto(albums.data ?? [], lightboxPhoto?.id),
+    [albums.data, lightboxPhoto?.id],
+  );
+  const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
   const [showAlbumDialog, setShowAlbumDialog] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [announcement, setAnnouncement] = useState("");
   const albumTrigger = useRef<HTMLButtonElement>(null);
+  const deleteTrigger = useRef<HTMLButtonElement>(null);
   const lightboxTrigger = useRef<HTMLElement | null>(null);
-  const archiveDownload = useDownloadTransfer();
+  const downloads = useDownloadTransfer();
+  const visibleSelectedCount = useMemo(
+    () => visiblePhotos.filter((photo) => selected.has(photo.id)).length,
+    [selected, visiblePhotos],
+  );
+  const selectedPhotos = useMemo(
+    () => (photos.data ?? []).filter(({ id }) => selected.has(id)),
+    [photos.data, selected],
+  );
+  const allVisibleSelected =
+    visiblePhotos.length > 0 && visibleSelectedCount === visiblePhotos.length;
   const closeLightbox = useCallback(() => {
     setLightboxPhoto(null);
     lightboxTrigger.current?.focus();
@@ -85,6 +94,19 @@ export const PhotosPage = () => {
       return next;
     });
   };
+  const toggleVisibleSelection = () => {
+    setSelected((current) => {
+      const next = new Set(current);
+      for (const photo of visiblePhotos) {
+        if (allVisibleSelected) {
+          next.delete(photo.id);
+        } else {
+          next.add(photo.id);
+        }
+      }
+      return next;
+    });
+  };
   const lightboxIndex = visiblePhotos.findIndex(({ id }) => id === lightboxPhoto?.id);
 
   return (
@@ -100,40 +122,7 @@ export const PhotosPage = () => {
           <h1>Photos</h1>
           <p>Originals stay mirrored. Fast previews keep the timeline light.</p>
         </div>
-        <div className="button-row">
-          <button
-            className="button secondary"
-            data-testid="create-album"
-            disabled={selected.size === 0}
-            onClick={() => setShowAlbumDialog(true)}
-            ref={albumTrigger}
-            type="button"
-          >
-            <Plus size={16} /> Album
-          </button>
-          <button
-            className="button secondary"
-            disabled={selected.size === 0 || archiveDownload.isDownloading}
-            onClick={async () => {
-              await archiveDownload.download({
-                filename: "mynas-photos.zip",
-                init: {
-                  body: JSON.stringify({ photoIds: [...selected] }),
-                  headers: { "content-type": "application/json" },
-                  method: "POST",
-                },
-                label: `${selected.size} selected photos`,
-                path: "/api/v1/photos/archive",
-              });
-            }}
-            type="button"
-          >
-            <Download size={16} /> Download selected
-          </button>
-        </div>
       </header>
-      <TransferProgressList kind="photo" operation="download" rows={archiveDownload.rows} />
-
       <PhotoLibraryControls
         density={density}
         onDensityChange={setDensity}
@@ -143,14 +132,38 @@ export const PhotosPage = () => {
             .refetch()
             .then((result) => setRefreshState(result.isError ? "failed" : "complete"));
         }}
-        onSearchChange={(value) => {
-          setSearch(value);
-          setSelected(new Set());
-        }}
+        onSearchChange={setSearch}
         onSortChange={setSort}
         refreshState={refreshState}
         search={search}
         sort={sort}
+      />
+
+      <PhotoSelectionToolbar
+        albumTrigger={albumTrigger}
+        allVisibleSelected={allVisibleSelected}
+        deleteTrigger={deleteTrigger}
+        isDownloading={false}
+        onClear={() => setSelected(new Set())}
+        onCreateAlbum={() => setShowAlbumDialog(true)}
+        onDelete={() => setShowDeleteDialog(true)}
+        onDownload={() => {
+          downloads.downloadMany(
+            (photos.data ?? [])
+              .filter(({ id }) => selected.has(id))
+              .map((photo) => ({
+                filename: photo.filename,
+                id: `selected:${photo.id}`,
+                kind: "photo",
+                label: photo.filename,
+                path: `/api/v1/photos/${photo.id}/original`,
+              })),
+          );
+        }}
+        onToggleVisible={toggleVisibleSelection}
+        selectedCount={selected.size}
+        visibleCount={visiblePhotos.length}
+        visibleSelectedCount={visibleSelectedCount}
       />
 
       <PhotoTransferControls
@@ -188,9 +201,16 @@ export const PhotosPage = () => {
         selected={selected}
         totalCount={photos.data?.length ?? 0}
       />
+      <div
+        aria-hidden="true"
+        className="photo-window-sentinel"
+        data-testid="photo-window-sentinel"
+        ref={photoWindow.sentinelRef}
+      />
 
       {lightboxPhoto === null ? null : (
         <PhotoLightbox
+          albumNames={lightboxAlbumNames}
           index={lightboxIndex}
           onClose={closeLightbox}
           onNext={
@@ -208,6 +228,20 @@ export const PhotosPage = () => {
         />
       )}
       {showAlbumDialog ? <AlbumDialog onClose={closeAlbumDialog} photoIds={[...selected]} /> : null}
+      {showDeleteDialog && selectedPhotos.length > 0 ? (
+        <PhotoDeleteDialog
+          onClose={() => {
+            setShowDeleteDialog(false);
+            deleteTrigger.current?.focus();
+          }}
+          onDeleted={() => {
+            setSelected(new Set());
+            setShowDeleteDialog(false);
+            setAnnouncement(`${selectedPhotos.length} selected photos deleted from the library.`);
+          }}
+          photos={selectedPhotos}
+        />
+      ) : null}
     </div>
   );
 };

@@ -37,8 +37,16 @@ export const uploadFileFixture = async (
 };
 
 export const createPhotoFixture = async (filename: string): Promise<Buffer> => {
-  const marker = [...filename].reduce((sum, character) => sum + character.charCodeAt(0), 0);
+  const marker = [...filename].reduce(
+    (hash, character) => (Math.imul(hash, 31) + character.charCodeAt(0)) >>> 0,
+    2_166_136_261,
+  );
   return sharp(Buffer.from(syntheticJpeg()))
+    .resize({
+      fit: "fill",
+      height: 32 + ((marker >>> 5) & 31),
+      width: 32 + (marker & 31),
+    })
     .tint({
       b: 64 + ((marker * 7) % 192),
       g: 64 + ((marker * 5) % 192),

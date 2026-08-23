@@ -10,6 +10,7 @@ import {
   Image,
   LogOut,
   Settings,
+  ShieldAlert,
   ShieldCheck,
   X,
 } from "lucide-react";
@@ -31,6 +32,7 @@ const navigation: readonly NavigationItem[] = [
   { icon: Files, label: "Files", path: "/files", testId: "nav-files" },
   { icon: Image, label: "Photos", path: "/photos", testId: "nav-photos" },
   { icon: Album, label: "Albums", path: "/albums", testId: "nav-albums" },
+  { icon: ShieldAlert, label: "Protection", path: "/protection", testId: "nav-protection" },
   { icon: Activity, label: "Activity", path: "/activity", testId: "nav-activity" },
   { icon: BookOpen, label: "Guide", path: "/guide", testId: "nav-guide" },
   { icon: Settings, label: "Settings", path: "/settings", testId: "nav-settings" },
@@ -86,7 +88,7 @@ export const AppShell = ({ children, onLogout, path }: ShellProps) => {
     ["/", "/files", "/photos"].includes(itemPath),
   );
   const mobileSecondary = navigation.filter(({ path: itemPath }) =>
-    ["/storage", "/albums", "/activity", "/guide", "/settings"].includes(itemPath),
+    ["/storage", "/albums", "/protection", "/activity", "/guide", "/settings"].includes(itemPath),
   );
   const mobileMoreSelected = mobileSecondary.some(({ path: itemPath }) => itemPath === path);
   const closeMobileMenu = () => {

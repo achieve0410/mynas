@@ -65,7 +65,7 @@ test("friendly file and photo workflows", async ({ page, request }) => {
   const fileArchiveDownload = page.waitForEvent("download");
   await page.getByRole("button", { name: "Download selected" }).click();
   await fileArchiveDownload;
-  await expect(page.getByTestId("transfer-file-download:mynas-files.zip")).toHaveAttribute(
+  await expect(page.getByTestId("transfer-file-download:selected:file:report.txt")).toHaveAttribute(
     "data-status",
     "complete",
   );
@@ -107,7 +107,7 @@ test("friendly file and photo workflows", async ({ page, request }) => {
   const photoArchiveDownload = page.waitForEvent("download");
   await page.getByRole("button", { name: "Download selected" }).click();
   await photoArchiveDownload;
-  await expect(page.getByTestId("transfer-photo-download:mynas-photos.zip")).toHaveAttribute(
+  await expect(page.getByTestId(`transfer-photo-download:selected:${previewId}`)).toHaveAttribute(
     "data-status",
     "complete",
   );
@@ -154,7 +154,7 @@ test("folder uploads keep duplicate basenames distinct", async ({ page, request 
   }
 });
 
-test("photo viewer zoom navigation and swipe", async ({ page, request }) => {
+test("photo viewer keyboard navigation and swipe", async ({ page, request }) => {
   const token = await authenticateLibraryPage(page, request);
   const firstId = await uploadPhotoFixture(request, token, "viewer-a.jpg");
   await uploadPhotoFixture(request, token, "viewer-b.jpg");
@@ -165,13 +165,9 @@ test("photo viewer zoom navigation and swipe", async ({ page, request }) => {
   await page.getByTestId(`photo-${firstId}`).click();
 
   const dialog = page.getByRole("dialog");
-  await page.getByTestId("photo-zoom-in").click();
-  await page.getByTestId("photo-zoom-in").click();
-  await expect(page.getByTestId("photo-zoom-value")).toHaveText("150%");
-
-  await page.getByTestId("photo-next").click();
+  await expect(page.getByRole("button", { name: "Zoom in" })).toHaveCount(0);
+  await page.keyboard.press("ArrowRight");
   await expect(page.getByTestId("photo-viewer-filename")).toHaveText("viewer-b.jpg");
-  await expect(page.getByTestId("photo-zoom-value")).toHaveText("100%");
   await expect(page.locator(".lightbox-image-frame")).toHaveAttribute("data-direction", "next");
   await page.keyboard.press("ArrowLeft");
   await expect(page.getByTestId("photo-viewer-filename")).toHaveText("viewer-a.jpg");
@@ -205,11 +201,11 @@ test("activity log centralizes transfer outcomes", async ({ page, request }) => 
   await page.goto("/photos");
   await page.getByTestId("photo-upload").setInputFiles({
     buffer: Buffer.from("not a photo"),
-    mimeType: "text/plain",
-    name: "broken-photo.txt",
+    mimeType: "image/jpeg",
+    name: "broken-photo.jpg",
   });
   await page.getByRole("button", { name: "Upload 1" }).click();
-  await expect(page.getByTestId("transfer-photo-broken-photo.txt")).toHaveAttribute(
+  await expect(page.getByTestId("transfer-photo-broken-photo.jpg")).toHaveAttribute(
     "data-status",
     "failed",
   );
@@ -219,11 +215,11 @@ test("activity log centralizes transfer outcomes", async ({ page, request }) => 
   await page.getByTestId("activity-outcome-filter").selectOption("failure");
   await page.getByTestId("activity-action-filter").selectOption("photo.upload");
   await expect(page.locator(".activity-row").first()).toContainText("Failed");
-  await expect(page.getByTestId("activity-list")).toContainText("broken-photo.txt");
+  await expect(page.getByTestId("activity-list")).toContainText("broken-photo.jpg");
   await expect(page.getByTestId("activity-list")).toHaveAttribute("data-order", "newest-first");
   await page.getByTestId("refresh-activity").click();
   await expect(page.getByTestId("activity-page")).toHaveAttribute("data-refresh-state", "complete");
   await page.reload();
-  await expect(page.getByTestId("activity-list")).toContainText("broken-photo.txt");
+  await expect(page.getByTestId("activity-list")).toContainText("broken-photo.jpg");
   await captureLibraryScreenshot(page, "activity-desktop.png");
 });

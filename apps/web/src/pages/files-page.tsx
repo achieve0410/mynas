@@ -1,6 +1,5 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
-
 import { api } from "../api";
 import { FileBrowser } from "../components/file-browser";
 import {
@@ -10,7 +9,6 @@ import {
 } from "../components/file-library-controls";
 import { FileTransferWorkbench } from "../components/file-transfer-workbench";
 import { FileVersionPanel } from "../components/file-version-panel";
-import { TransferProgressList } from "../components/transfer-progress-list";
 import { useDownloadTransfer } from "../hooks/use-download-transfer";
 import type { FileListEntry, FileListing } from "../schemas";
 
@@ -25,9 +23,7 @@ export const FilesPage = () => {
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState<"name" | "type">("name");
   const [refreshState, setRefreshState] = useState<LibraryRefreshState>("idle");
-  const currentDownload = useDownloadTransfer();
-  const archiveDownload = useDownloadTransfer();
-  const pendingDownload = currentDownload.isDownloading || archiveDownload.isDownloading;
+  const downloads = useDownloadTransfer();
 
   const volumes = useQuery({
     queryFn: api.listVolumes,
@@ -47,6 +43,7 @@ export const FilesPage = () => {
           : { cursor: pageParam, limit: 50, search, sort },
       ),
     queryKey: ["files", volumeId, prefix, search, sort],
+    refetchInterval: 3_000,
   });
   const entries = useMemo(
     () => listing.data?.pages.flatMap((page: FileListing) => page.entries) ?? [],
@@ -106,33 +103,50 @@ export const FilesPage = () => {
     setMessage(null);
   };
 
-  const downloadSelected = async (): Promise<void> => {
+  const downloadSelected = (): void => {
     if (selectedPath === null) {
       return;
     }
     const filename = selectedPath.split("/").at(-1) ?? "download";
     const encodedPath = selectedPath.split("/").map(encodeURIComponent).join("/");
-    await currentDownload.download({
+    downloads.download({
       filename,
       id: `current:${selectedPath}`,
       label: filename,
       path: `/api/v1/files/${encodeURIComponent(volumeId)}/${encodedPath}`,
     });
+    setMessage(`${filename} queued for download.`);
   };
 
-  const downloadArchive = async (): Promise<void> => {
-    await archiveDownload.download({
-      filename: "mynas-files.zip",
-      init: {
-        body: JSON.stringify({
-          selections: selections.map(({ kind, path }) => ({ kind, path })),
-        }),
-        headers: { "content-type": "application/json" },
-        method: "POST",
-      },
-      label: `${selections.length} selected items`,
-      path: `/api/v1/volumes/${encodeURIComponent(volumeId)}/archive`,
-    });
+  const downloadSelections = (): void => {
+    downloads.downloadMany(
+      selections.map((selection) => {
+        const name = selection.path.split("/").filter(Boolean).at(-1) ?? "download";
+        if (selection.kind === "file") {
+          return {
+            filename: name,
+            id: `selected:file:${selection.path}`,
+            label: selection.path,
+            path: `/api/v1/files/${encodeURIComponent(volumeId)}/${selection.path
+              .split("/")
+              .map(encodeURIComponent)
+              .join("/")}`,
+          };
+        }
+        return {
+          filename: `${name}.zip`,
+          id: `selected:folder:${selection.path}`,
+          init: {
+            body: JSON.stringify({ selections: [selection] }),
+            headers: { "content-type": "application/json" },
+            method: "POST",
+          },
+          label: selection.path,
+          path: `/api/v1/volumes/${encodeURIComponent(volumeId)}/archive`,
+        };
+      }),
+    );
+    setMessage(`${selections.length} selected downloads queued.`);
   };
 
   const refreshVisibleFiles = async (): Promise<void> => {
@@ -148,13 +162,7 @@ export const FilesPage = () => {
 
   return (
     <div className="page">
-      <FilePageHeader
-        downloading={pendingDownload}
-        onDownloadSelected={() => {
-          void downloadArchive();
-        }}
-        selectionCount={selections.length}
-      />
+      <FilePageHeader onDownloadSelected={downloadSelections} selectionCount={selections.length} />
 
       <FileLibraryControls
         onRefresh={() => {
@@ -181,8 +189,6 @@ export const FilesPage = () => {
           {message}
         </p>
       )}
-      <TransferProgressList kind="file" operation="download" rows={currentDownload.rows} />
-      <TransferProgressList kind="file" operation="download" rows={archiveDownload.rows} />
       {restore.error === null ? null : (
         <p aria-live="assertive" className="form-error">
           {restore.error.message}
@@ -215,7 +221,7 @@ export const FilesPage = () => {
           error={versions.error}
           isLoading={versions.isLoading && selectedPath !== null}
           onDownload={() => {
-            void downloadSelected();
+            downloadSelected();
           }}
           onRestore={(versionId) => {
             if (
@@ -227,7 +233,7 @@ export const FilesPage = () => {
             }
           }}
           path={selectedPath}
-          pendingAction={pendingDownload ? "download" : restore.isPending ? "restore" : null}
+          pendingAction={restore.isPending ? "restore" : null}
           versions={versions.data ?? []}
         />
       </div>

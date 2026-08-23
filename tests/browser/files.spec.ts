@@ -120,16 +120,38 @@ test("files workflow browses folders and restores a downloadable version", async
 
   await page.getByLabel("Select folder-source").check();
   await page.getByLabel("Select alpha.txt").check();
-  const archiveStarted = page.waitForEvent("download");
+  const downloads: import("@playwright/test").Download[] = [];
+  let resolveDownloads: (() => void) | undefined;
+  const downloadsCompleted = new Promise<void>((resolve) => {
+    resolveDownloads = resolve;
+  });
+  const recordDownload = (download: import("@playwright/test").Download): void => {
+    downloads.push(download);
+    if (downloads.length === 2) {
+      page.off("download", recordDownload);
+      resolveDownloads?.();
+    }
+  };
+  page.on("download", recordDownload);
   const archiveResponse = page.waitForResponse(
     (response) =>
       response.request().method() === "POST" &&
       new URL(response.url()).pathname === "/api/v1/volumes/photos/archive",
   );
+  const fileResponse = page.waitForResponse(
+    (response) =>
+      response.request().method() === "GET" &&
+      new URL(response.url()).pathname === "/api/v1/files/photos/documents/alpha.txt",
+  );
   await page.getByRole("button", { name: "Download selected" }).click();
-  expect((await archiveResponse).status()).toBe(200);
-  const archive = await archiveStarted;
-  expect(archive.suggestedFilename()).toBe("mynas-files.zip");
+  const [archiveResult, fileResult] = await Promise.all([archiveResponse, fileResponse]);
+  expect(archiveResult.status()).toBe(200);
+  expect(fileResult.status()).toBe(200);
+  await downloadsCompleted;
+  expect(downloads.map((download) => download.suggestedFilename()).toSorted()).toEqual([
+    "alpha.txt",
+    "folder-source.zip",
+  ]);
 
   await page.screenshot({
     fullPage: true,

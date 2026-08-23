@@ -5,7 +5,6 @@ import { api } from "../api";
 import { useDownloadTransfer } from "../hooks/use-download-transfer";
 import { useFileUpload } from "../hooks/use-file-upload";
 import { useVolumeHealth } from "../hooks/use-volume-health";
-import { TransferProgressList } from "./transfer-progress-list";
 
 type FileTransferWorkbenchProps = {
   readonly keyValue: string;
@@ -22,28 +21,24 @@ export const FileTransferWorkbench = ({
 }: FileTransferWorkbenchProps) => {
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [pendingAction, setPendingAction] = useState<"delete" | "download" | null>(null);
+  const [pendingAction, setPendingAction] = useState<"delete" | null>(null);
   const writeAvailability = useVolumeHealth(volumeId);
   const fileUpload = useFileUpload({ keyValue, onChanged, onKeyChange, volumeId });
   const fileDownload = useDownloadTransfer();
-  const busy = pendingAction !== null || fileUpload.isUploading || fileDownload.isDownloading;
+  const busy = pendingAction !== null;
 
-  const download = async () => {
+  const download = (): void => {
     setActionError(null);
-    setPendingAction("download");
-    try {
-      await fileDownload.download({
-        filename: keyValue.split("/").at(-1) ?? "download",
-        id: `exact:${keyValue}`,
-        label: keyValue,
-        path: `/api/v1/files/${encodeURIComponent(volumeId)}/${keyValue
-          .split("/")
-          .map(encodeURIComponent)
-          .join("/")}`,
-      });
-    } finally {
-      setPendingAction(null);
-    }
+    fileDownload.download({
+      filename: keyValue.split("/").at(-1) ?? "download",
+      id: `exact:${keyValue}`,
+      label: keyValue,
+      path: `/api/v1/files/${encodeURIComponent(volumeId)}/${keyValue
+        .split("/")
+        .map(encodeURIComponent)
+        .join("/")}`,
+    });
+    setActionMessage(`${keyValue} queued for download.`);
   };
 
   return (
@@ -71,7 +66,6 @@ export const FileTransferWorkbench = ({
             className="mono"
             onChange={(event) => onKeyChange(event.target.value)}
             placeholder="documents/archive.zip"
-            required
             value={keyValue}
           />
         </label>
@@ -119,7 +113,6 @@ export const FileTransferWorkbench = ({
             className="button primary"
             disabled={
               fileUpload.selection === null ||
-              keyValue.length === 0 ||
               volumeId.length === 0 ||
               !writeAvailability.canWrite ||
               busy
@@ -127,11 +120,9 @@ export const FileTransferWorkbench = ({
             title={writeAvailability.canWrite ? undefined : writeAvailability.reason}
             type="submit"
           >
-            {fileUpload.isUploading
-              ? "Uploading..."
-              : `Upload ${fileUpload.selection?.items.length ?? 0} protected ${
-                  fileUpload.selection?.items.length === 1 ? "item" : "items"
-                }`}
+            {`Upload ${fileUpload.selection?.items.length ?? 0} protected ${
+              fileUpload.selection?.items.length === 1 ? "item" : "items"
+            }`}
           </button>
           <button
             className="button secondary"
@@ -171,24 +162,10 @@ export const FileTransferWorkbench = ({
             {fileUpload.message ?? actionMessage}
           </p>
         )}
-        <TransferProgressList kind="file" rows={fileUpload.transferRows} />
-        <TransferProgressList kind="file" operation="download" rows={fileDownload.rows} />
-        {(fileUpload.error ?? actionError) === null ? null : (
+        {actionError === null ? null : (
           <p aria-live="polite" className="form-error">
-            {fileUpload.error ?? actionError}
+            {actionError}
           </p>
-        )}
-        {fileUpload.failedPaths.length === 0 ? null : (
-          <div aria-live="polite" className="upload-failures">
-            <strong>Failed paths</strong>
-            <ul>
-              {fileUpload.failedPaths.map((path) => (
-                <li className="mono" key={path}>
-                  {path}
-                </li>
-              ))}
-            </ul>
-          </div>
         )}
         <p className={writeAvailability.canWrite ? "form-note" : "form-error"}>
           {writeAvailability.reason}

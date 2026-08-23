@@ -1,5 +1,4 @@
-import type { z } from "zod";
-
+import { ApiError, json, request, SESSION_KEY, sessionToken } from "./api-client";
 import {
   activityEventsSchema,
   albumSchema,
@@ -17,7 +16,10 @@ import {
   maintenancePolicySchema,
   maintenanceSnapshotSchema,
   operationSchema,
+  type ProtectionIncidentFilter,
+  photoChecksumLookupSchema,
   photosSchema,
+  protectionIncidentsSchema,
   repairReportSchema,
   sessionSchema,
   setupStatusSchema,
@@ -25,62 +27,9 @@ import {
   volumeHealthSchema,
   volumesSchema,
 } from "./schemas";
+import type { TransferBatchNotification } from "./transfer-manager";
 
-export const SESSION_KEY = "mynas.sessionToken";
-export const RETURN_TO_KEY = "mynas.returnTo";
-
-export class ApiError extends Error {
-  public constructor(
-    public readonly status: number,
-    message: string,
-  ) {
-    super(message);
-    this.name = "ApiError";
-  }
-}
-
-export const sessionToken = (): string | null => window.localStorage.getItem(SESSION_KEY);
-
-const messageFor = async (response: Response): Promise<string> => {
-  const body: unknown = await response.json().catch(() => null);
-  if (
-    typeof body === "object" &&
-    body !== null &&
-    "error" in body &&
-    typeof body.error === "object" &&
-    body.error !== null &&
-    "message" in body.error &&
-    typeof body.error.message === "string"
-  ) {
-    return body.error.message;
-  }
-  return `request failed with status ${response.status}`;
-};
-
-const request = async (path: string, init: RequestInit = {}): Promise<Response> => {
-  const headers = new Headers(init.headers);
-  const token = sessionToken();
-  if (token !== null) {
-    headers.set("authorization", `Bearer ${token}`);
-  }
-  if (init.body !== undefined && typeof init.body === "string") {
-    headers.set("content-type", "application/json");
-  }
-  const response = await fetch(path, { ...init, headers });
-  if (!response.ok) {
-    const message = await messageFor(response);
-    if (response.status === 401 && token !== null && sessionToken() === token) {
-      window.localStorage.removeItem(SESSION_KEY);
-      window.sessionStorage.setItem(RETURN_TO_KEY, window.location.pathname);
-      window.location.assign("/login");
-    }
-    throw new ApiError(response.status, message);
-  }
-  return response;
-};
-
-const json = async <T>(path: string, schema: z.ZodType<T>, init?: RequestInit): Promise<T> =>
-  schema.parse(await (await request(path, init)).json());
+export { ApiError, RETURN_TO_KEY, SESSION_KEY, sessionToken } from "./api-client";
 
 export const api = {
   addPhotoToAlbum: (albumId: string, photoId: string) =>
@@ -105,10 +54,19 @@ export const api = {
       body: JSON.stringify({ id, kind: "mirror", members }),
       method: "POST",
     }),
+  notifyTransferBatch: (body: TransferBatchNotification) =>
+    request("/api/v1/transfer-notifications", {
+      body: JSON.stringify(body),
+      method: "POST",
+    }).then(() => undefined),
+  deleteAlbum: (albumId: string) =>
+    request(`/api/v1/albums/${encodeURIComponent(albumId)}`, { method: "DELETE" }),
   deleteFile: (volumeId: string, key: string) =>
     request(`/api/v1/files/${encodeURIComponent(volumeId)}/${encodePath(key)}`, {
       method: "DELETE",
     }),
+  deletePhoto: (photoId: string) =>
+    request(`/api/v1/photos/${encodeURIComponent(photoId)}`, { method: "DELETE" }),
   download: async (path: string): Promise<Blob> => (await request(path)).blob(),
   downloadFile: async (volumeId: string, key: string): Promise<Blob> =>
     (await request(`/api/v1/files/${encodeURIComponent(volumeId)}/${encodePath(key)}`)).blob(),
@@ -165,14 +123,28 @@ export const api = {
   listFileVersions: (volumeId: string, key: string) =>
     json(`/api/v1/versions/${encodeURIComponent(volumeId)}/${encodePath(key)}`, fileVersionsSchema),
   listPhotos: () => json("/api/v1/photos", photosSchema),
+  listProtectionIncidents: (status: ProtectionIncidentFilter = "all") =>
+    json(
+      `/api/v1/incidents?${new URLSearchParams({ status }).toString()}`,
+      protectionIncidentsSchema,
+    ),
   listTokens: () => json("/api/v1/tokens", apiTokensSchema),
   listVolumes: () => json("/api/v1/volumes", volumesSchema),
+  removePhotoFromAlbum: (albumId: string, photoId: string) =>
+    request(`/api/v1/albums/${encodeURIComponent(albumId)}/photos/${encodeURIComponent(photoId)}`, {
+      method: "DELETE",
+    }),
   login: (username: string, password: string) =>
     json("/api/v1/login", sessionSchema, {
       body: JSON.stringify({ password, username }),
       method: "POST",
     }),
   logout: () => request("/api/v1/logout", { method: "POST" }),
+  lookupPhotoChecksums: (checksums: readonly string[]) =>
+    json("/api/v1/photos/checksums", photoChecksumLookupSchema, {
+      body: JSON.stringify({ checksums }),
+      method: "POST",
+    }),
   changePassword: async (currentPassword: string, newPassword: string) => {
     const token = sessionToken();
     if (token === null) {
@@ -237,6 +209,11 @@ export const api = {
     });
     return ingestSchema.parse(await response.json());
   },
+  updateAlbum: (albumId: string, name: string) =>
+    json(`/api/v1/albums/${encodeURIComponent(albumId)}`, albumSchema, {
+      body: JSON.stringify({ name }),
+      method: "PATCH",
+    }),
 };
 
 const encodePath = (path: string): string =>

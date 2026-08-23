@@ -79,11 +79,27 @@ export const photoSchema = z.object({
   height: z.number().int().positive(),
   id: z.string().uuid(),
   importedAt: z.string(),
+  location: z
+    .object({
+      latitude: z.number().finite().min(-90).max(90),
+      longitude: z.number().finite().min(-180).max(180),
+    })
+    .nullable(),
   originalPath: z.string(),
   previewPath: z.string(),
   width: z.number().int().positive(),
 });
 export const photosSchema = z.array(photoSchema);
+export const photoChecksumLookupSchema = z.object({
+  matches: z.array(
+    photoSchema.pick({
+      checksum: true,
+      filename: true,
+      id: true,
+    }),
+  ),
+});
+export type PhotoChecksumMatch = z.infer<typeof photoChecksumLookupSchema>["matches"][number];
 
 export const activityEventSchema = z.object({
   action: z.string().min(1),
@@ -101,6 +117,23 @@ export const activityEventSchema = z.object({
 });
 export const activityEventsSchema = z.array(activityEventSchema);
 export type ActivityEvent = z.infer<typeof activityEventSchema>;
+
+export const protectionIncidentSchema = z.object({
+  firstSeenAt: z.iso.datetime(),
+  id: z.string().uuid(),
+  impact: z.string().min(1),
+  kind: z.enum(["catalog_backup_failed", "volume_scrub_failed"]),
+  lastSeenAt: z.iso.datetime(),
+  occurrenceCount: z.number().int().positive(),
+  remediation: z.string().min(1),
+  resolvedAt: z.iso.datetime().nullable(),
+  severity: z.enum(["critical", "warning"]),
+  status: z.enum(["active", "resolved"]),
+  title: z.string().min(1),
+});
+export const protectionIncidentsSchema = z.array(protectionIncidentSchema);
+export type ProtectionIncident = z.infer<typeof protectionIncidentSchema>;
+export type ProtectionIncidentFilter = ProtectionIncident["status"] | "all";
 
 export const jobSchema = z.object({
   error: z.string().nullable(),

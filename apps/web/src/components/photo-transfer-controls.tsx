@@ -1,142 +1,158 @@
 import { FolderUp, Upload } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
+import {
+  createPhotoReviewItems,
+  fallbackPhotoReviewItems,
+  resolvePhotoReviewItems,
+} from "../photo-import-state";
+import { savePhotoReceipt } from "../photo-receipts";
+import { ingestSchema } from "../schemas";
 import { uploadWithProgress } from "../transfer-api";
-import { TransferProgressList, type TransferRow } from "./transfer-progress-list";
+import { PhotoImportReview, type PhotoReviewItem } from "./photo-import-review";
+import { useTransferManager } from "./transfer-provider";
 
 type PhotoTransferControlsProps = {
   readonly canWrite: boolean;
+  readonly onPhotoUploaded?: (photoId: string) => Promise<void>;
   readonly onUploaded: () => Promise<void>;
   readonly reason: string;
-};
-
-type UploadSelection = {
-  readonly items: readonly {
-    readonly file: File;
-    readonly id: string;
-    readonly path: string;
-  }[];
+  readonly testIdPrefix?: string;
 };
 
 const photoTypes = ".heic,.jpeg,.jpg,.png,image/heic,image/heif,image/jpeg,image/png";
+const errorMessage = (cause: unknown): string =>
+  cause instanceof Error ? cause.message : "Photo import failed";
 
 export const PhotoTransferControls = ({
   canWrite,
+  onPhotoUploaded,
   onUploaded,
   reason,
+  testIdPrefix = "photo",
 }: PhotoTransferControlsProps) => {
-  const [selection, setSelection] = useState<UploadSelection | null>(null);
-  const [failedPaths, setFailedPaths] = useState<readonly string[]>([]);
-  const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
-  const [pending, setPending] = useState(false);
-  const [transferRows, setTransferRows] = useState<readonly TransferRow[]>([]);
-  const controller = useRef<AbortController | null>(null);
+  const [reviewError, setReviewError] = useState<string | undefined>();
+  const [reviewItems, setReviewItems] = useState<readonly PhotoReviewItem[] | null>(null);
+  const reviewAbort = useRef<AbortController | null>(null);
+  const manager = useTransferManager();
 
-  useEffect(() => {
-    return () => {
-      controller.current?.abort();
-    };
-  }, []);
+  useEffect(
+    () => () => {
+      reviewAbort.current?.abort();
+    },
+    [],
+  );
 
-  const upload = async (): Promise<void> => {
-    if (selection === null) {
-      return;
-    }
-    setFailedPaths([]);
-    setError(null);
-    setMessage(null);
-    setPending(true);
-    setTransferRows(
-      selection.items.map(({ file, id, path }) => ({
-        id,
-        label: path,
-        loaded: 0,
-        percent: 0,
-        status: "queued",
-        total: file.size,
-      })),
-    );
-    const uploadController = new AbortController();
-    controller.current = uploadController;
-    const failures: string[] = [];
-    let uploaded = 0;
-    for (const { file, id, path } of selection.items) {
-      if (uploadController.signal.aborted) {
-        break;
-      }
-      try {
-        setTransferRows((rows) =>
-          rows.map((row) => (row.id === id ? { ...row, status: "transferring" as const } : row)),
-        );
-        await uploadWithProgress(
-          "POST",
-          "/api/v1/photos",
-          file,
-          (progress) => {
-            setTransferRows((rows) =>
-              rows.map((row) => (row.id === id ? { ...row, ...progress } : row)),
-            );
-          },
-          { "x-mynas-filename": encodeURIComponent(path) },
-          uploadController.signal,
-        );
-        setTransferRows((rows) =>
-          rows.map((row) =>
-            row.id === id
-              ? { ...row, loaded: file.size, percent: 100, status: "complete" as const }
-              : row,
-          ),
-        );
-        uploaded += 1;
-      } catch (cause) {
-        setTransferRows((rows) =>
-          rows.map((row) =>
-            row.id === id
-              ? {
-                  ...row,
-                  error: cause instanceof Error ? cause.message : "Upload failed",
-                  status: "failed" as const,
-                }
-              : row,
-          ),
-        );
-        failures.push(path);
-        if (uploadController.signal.aborted) {
-          break;
-        }
-      }
-    }
-    try {
-      if (uploaded > 0) {
-        await onUploaded();
-      }
-      setFailedPaths(failures);
-      setMessage(`${uploaded} of ${selection.items.length} photos uploaded.`);
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Catalog refresh failed");
-    } finally {
-      if (controller.current === uploadController) {
-        controller.current = null;
-      }
-      setPending(false);
-    }
+  const cancelReview = (): void => {
+    reviewAbort.current?.abort();
+    reviewAbort.current = null;
+    setReviewItems(null);
+    setReviewError(undefined);
   };
 
   const select = (files: FileList | null, kind: "directory" | "files"): void => {
-    const selected = files === null ? [] : Array.from(files);
-    const items = selected.map((file) => {
-      const path =
-        kind === "directory" && file.webkitRelativePath.length > 0
-          ? file.webkitRelativePath
-          : file.name;
-      return { file, id: path, path };
-    });
-    setSelection(items.length === 0 ? null : { items });
-    setFailedPaths([]);
-    setError(null);
+    reviewAbort.current?.abort();
+    const controller = new AbortController();
+    reviewAbort.current = controller;
+    const items = createPhotoReviewItems(files, kind);
+    setReviewItems(items.length === 0 ? null : items);
+    setReviewError(undefined);
     setMessage(null);
-    setTransferRows([]);
+    if (items.length === 0) {
+      return;
+    }
+    void resolvePhotoReviewItems(items, controller.signal)
+      .then((resolved) => {
+        if (!controller.signal.aborted) {
+          setReviewItems(resolved);
+          reviewAbort.current = null;
+        }
+      })
+      .catch((cause: unknown) => {
+        if (cause instanceof DOMException && cause.name === "AbortError") {
+          return;
+        }
+        setReviewItems(fallbackPhotoReviewItems(items));
+        setReviewError(
+          `Protection status could not be verified. Selected photos remain uploadable: ${errorMessage(
+            cause,
+          )}`,
+        );
+        reviewAbort.current = null;
+      });
+  };
+
+  const confirmReview = async (): Promise<void> => {
+    if (reviewItems === null) {
+      return;
+    }
+    const selected = reviewItems;
+    const protectedIds = selected.flatMap((item) =>
+      item.status === "already-protected" && item.photoId !== undefined ? [item.photoId] : [],
+    );
+    const fresh = selected.filter((item) => item.status === "new");
+    try {
+      if (onPhotoUploaded !== undefined) {
+        for (const photoId of protectedIds) {
+          await onPhotoUploaded(photoId);
+        }
+      }
+      if (fresh.length === 0) {
+        await onUploaded();
+        manager.clearFinished();
+        setReviewItems(null);
+        setMessage(`${protectedIds.length} protected photos reused without uploading.`);
+        return;
+      }
+      manager.enqueueBatch(
+        fresh.map(({ file, id, path }) => ({
+          execute: async ({ onProgress, signal }) => {
+            const responseBody = await uploadWithProgress(
+              "POST",
+              "/api/v1/photos",
+              file,
+              onProgress,
+              { "x-mynas-filename": encodeURIComponent(path) },
+              signal,
+            );
+            const ingest = ingestSchema.parse(JSON.parse(responseBody));
+            try {
+              await savePhotoReceipt({ file, path }, ingest.photo);
+            } catch (cause) {
+              const receiptError =
+                cause instanceof Error ? cause.message : "Local receipt persistence failed";
+              setMessage(
+                `Photo uploaded, but its local protection receipt was not saved: ${receiptError}`,
+              );
+            }
+            await onPhotoUploaded?.(ingest.photo.id);
+          },
+          id,
+          kind: "photo",
+          label: path,
+          operation: "upload",
+          path,
+          testId: path,
+          total: file.size,
+        })),
+        {
+          onSettled: () => {
+            void onUploaded().catch((cause: unknown) => {
+              setMessage(`Photo refresh failed: ${errorMessage(cause)}`);
+            });
+          },
+        },
+      );
+      setReviewItems(null);
+      setMessage(
+        `${fresh.length} new ${fresh.length === 1 ? "photo" : "photos"} queued; ${
+          protectedIds.length
+        } already protected.`,
+      );
+    } catch (cause) {
+      setReviewError(cause instanceof Error ? cause.message : "Photo import failed");
+    }
   };
 
   return (
@@ -147,11 +163,11 @@ export const PhotoTransferControls = ({
           title={canWrite ? undefined : reason}
         >
           <Upload size={16} />
-          Choose photos
+          Add photos
           <input
             accept={photoTypes}
-            data-testid="photo-upload"
-            disabled={pending || !canWrite}
+            data-testid={`${testIdPrefix}-upload`}
+            disabled={!canWrite}
             multiple
             onChange={(event) => {
               select(event.target.files, "files");
@@ -165,11 +181,11 @@ export const PhotoTransferControls = ({
           title={canWrite ? undefined : reason}
         >
           <FolderUp size={16} />
-          Choose photo folder
+          Import folder from Files
           <input
             accept={photoTypes}
-            data-testid="photo-directory-upload"
-            disabled={pending || !canWrite}
+            data-testid={`${testIdPrefix}-directory-upload`}
+            disabled={!canWrite}
             multiple
             onChange={(event) => {
               select(event.target.files, "directory");
@@ -179,39 +195,26 @@ export const PhotoTransferControls = ({
             type="file"
           />
         </label>
-        <button
-          className="button primary"
-          disabled={selection === null || pending || !canWrite}
-          onClick={() => {
-            void upload();
-          }}
-          type="button"
-        >
-          {pending ? "Uploading..." : `Upload ${selection?.items.length ?? 0}`}
-        </button>
       </div>
+      <p className="form-note" data-testid={`${testIdPrefix}-picker-note`}>
+        On iPhone, Add photos opens your photo library. If the picker closes before this review
+        appears, reselect a smaller group.
+      </p>
       {message === null ? null : (
         <p aria-live="polite" className="form-success">
           {message}
         </p>
       )}
-      <TransferProgressList kind="photo" rows={transferRows} />
-      {error === null ? null : (
-        <p aria-live="polite" className="form-error">
-          {error}
-        </p>
-      )}
-      {failedPaths.length === 0 ? null : (
-        <div aria-live="polite" className="upload-failures">
-          <strong>Failed paths</strong>
-          <ul>
-            {failedPaths.map((path) => (
-              <li className="mono" key={path}>
-                {path}
-              </li>
-            ))}
-          </ul>
-        </div>
+      {reviewItems === null ? null : (
+        <PhotoImportReview
+          allowProtectedConfirmation={onPhotoUploaded !== undefined}
+          error={reviewError}
+          items={reviewItems}
+          onCancel={cancelReview}
+          onConfirm={() => {
+            void confirmReview();
+          }}
+        />
       )}
     </div>
   );

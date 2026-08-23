@@ -1,10 +1,13 @@
 import type { TransferProgress } from "../transfer-api";
 
 export type TransferRow = TransferProgress & {
-  readonly error?: string;
+  readonly error?: string | undefined;
   readonly id: string;
+  readonly kind?: "file" | "photo";
   readonly label: string;
-  readonly status: "complete" | "failed" | "queued" | "transferring";
+  readonly operation?: "download" | "upload";
+  readonly status: "complete" | "failed" | "paused" | "queued" | "transferring";
+  readonly testId?: string;
 };
 
 type TransferProgressListProps = {
@@ -27,7 +30,7 @@ export const TransferProgressList = ({
         <li
           className="transfer-row"
           data-status={row.status}
-          data-testid={`transfer-${kind}-${row.id}`}
+          data-testid={`transfer-${row.kind ?? kind}-${row.testId ?? row.id}`}
           key={row.id}
         >
           <div className="transfer-row-heading">
@@ -35,7 +38,7 @@ export const TransferProgressList = ({
             <span>{row.status === "transferring" ? "In progress" : row.status}</span>
           </div>
           <progress
-            aria-label={`${row.label} ${operation} progress`}
+            aria-label={`${row.label} ${row.operation ?? operation} progress`}
             aria-valuemax={row.percent === null ? undefined : 100}
             aria-valuemin={row.percent === null ? undefined : 0}
             aria-valuenow={row.status === "complete" ? 100 : (row.percent ?? undefined)}

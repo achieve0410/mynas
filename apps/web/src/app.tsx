@@ -2,6 +2,7 @@ import { useState } from "react";
 
 import { api, SESSION_KEY, sessionToken } from "./api";
 import { AppShell } from "./components/shell";
+import { TransferProvider } from "./components/transfer-provider";
 import { ActivityPage } from "./pages/activity-page";
 import { AlbumsPage } from "./pages/albums-page";
 import { AuthPage } from "./pages/auth-page";
@@ -9,6 +10,7 @@ import { FilesPage } from "./pages/files-page";
 import { GuidePage } from "./pages/guide-page";
 import { OverviewPage } from "./pages/overview-page";
 import { PhotosPage } from "./pages/photos-page";
+import { ProtectionPage } from "./pages/protection-page";
 import { SettingsPage } from "./pages/settings-page";
 import { StoragePage } from "./pages/storage-page";
 import { usePathname } from "./router";
@@ -25,6 +27,8 @@ const pageFor = (path: string) => {
       return <AlbumsPage />;
     case "/activity":
       return <ActivityPage />;
+    case "/protection":
+      return <ProtectionPage />;
     case "/guide":
       return <GuidePage />;
     case "/settings":
@@ -44,22 +48,24 @@ export const App = () => {
   }
 
   return (
-    <AppShell
-      onLogout={() => {
-        void api
-          .logout()
-          .then(() => {
-            window.localStorage.removeItem(SESSION_KEY);
-            refreshSession();
-          })
-          .catch((error: unknown) => {
-            const message = error instanceof Error ? error.message : "unknown error";
-            window.alert(`Sign-out failed; this session is still active. ${message}`);
-          });
-      }}
-      path={path}
-    >
-      {pageFor(path)}
-    </AppShell>
+    <TransferProvider>
+      <AppShell
+        onLogout={() => {
+          void api
+            .logout()
+            .then(() => {
+              window.localStorage.removeItem(SESSION_KEY);
+              refreshSession();
+            })
+            .catch((error: unknown) => {
+              const message = error instanceof Error ? error.message : "unknown error";
+              window.alert(`Sign-out failed; this session is still active. ${message}`);
+            });
+        }}
+        path={path}
+      >
+        {pageFor(path)}
+      </AppShell>
+    </TransferProvider>
   );
 };

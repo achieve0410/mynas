@@ -103,7 +103,7 @@ test("photo flagship completes the real browser journey", async ({ browser, page
         new URL(response.url()).pathname === "/api/v1/photos"
       ) {
         batchStatuses.push(response.status());
-        if (batchStatuses.length === 2) {
+        if (batchStatuses.length === 1) {
           page.off("response", record);
           resolve();
         }
@@ -112,26 +112,27 @@ test("photo flagship completes the real browser journey", async ({ browser, page
     page.on("response", record);
   });
   await page.getByTestId("photo-directory-upload").setInputFiles(uploadFolder);
-  await page.getByRole("button", { name: "Upload 2" }).click();
+  const importReview = page.getByTestId("photo-import-review");
+  await expect(importReview.locator('[data-review-status="unsupported"]')).toHaveCount(1);
+  await importReview.getByRole("button", { name: "Upload 1 new" }).click();
   await directoryUploadCompleted;
-  expect(batchStatuses.toSorted()).toEqual([201, 400]);
-  await expect(page.getByText("1 of 2 photos uploaded.")).toBeVisible();
-  await expect(
-    page.locator(".upload-failures").getByText("사진-묶음/unsupported.txt"),
-  ).toBeVisible();
+  expect(batchStatuses).toEqual([201]);
+  await expect(page.getByTestId("transfer-batch-summary").last()).toHaveText(
+    "1 of 1 photos uploaded.",
+  );
   await expect(page.getByAltText("사진-묶음/중첩/iphone.heic")).toBeVisible();
 
   await page.getByTestId(`photo-select-${ingest.photo.id}`).check();
-  const archiveDownloadStarted = page.waitForEvent("download");
-  const archiveResponse = page.waitForResponse(
+  const originalDownloadStarted = page.waitForEvent("download");
+  const originalResponse = page.waitForResponse(
     (response) =>
-      response.request().method() === "POST" &&
-      new URL(response.url()).pathname === "/api/v1/photos/archive",
+      response.request().method() === "GET" &&
+      new URL(response.url()).pathname === `/api/v1/photos/${ingest.photo.id}/original`,
   );
   await page.getByRole("button", { name: "Download selected" }).click();
-  expect((await archiveResponse).status()).toBe(200);
-  const archiveDownload = await archiveDownloadStarted;
-  expect(archiveDownload.suggestedFilename()).toBe("mynas-photos.zip");
+  expect((await originalResponse).status()).toBe(200);
+  const originalDownload = await originalDownloadStarted;
+  expect(originalDownload.suggestedFilename()).toBe(syntheticJpegFilename);
 
   await mkdir(ARTIFACT_DIR, { recursive: true });
   await page.screenshot({ fullPage: true, path: `${ARTIFACT_DIR}/timeline-desktop.png` });

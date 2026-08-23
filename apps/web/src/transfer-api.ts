@@ -41,7 +41,7 @@ export const uploadWithProgress = (
   onProgress: (progress: TransferProgress) => void,
   headers: Readonly<Record<string, string>> = {},
   signal?: AbortSignal,
-): Promise<void> =>
+): Promise<string> =>
   new Promise((resolve, reject) => {
     if (signal?.aborted) {
       reject(new ApiError(0, "request aborted"));
@@ -67,7 +67,7 @@ export const uploadWithProgress = (
       if (request.status >= 200 && request.status < 300) {
         onProgress({ loaded: body.size, percent: 100, total: body.size });
         cleanup();
-        resolve();
+        resolve(request.responseText);
         return;
       }
       cleanup();
@@ -128,5 +128,5 @@ export const downloadWithProgress = async (
     });
   }
   onProgress({ loaded, percent: 100, total: total ?? loaded });
-  return new Blob(chunks);
+  return new Blob(chunks, { type: response.headers.get("content-type") ?? "" });
 };

@@ -3,16 +3,11 @@ import { Database, Download, RefreshCw, Search, ShieldCheck } from "lucide-react
 export type LibraryRefreshState = "complete" | "failed" | "idle" | "refreshing";
 
 type FilePageHeaderProps = {
-  readonly downloading: boolean;
   readonly onDownloadSelected: () => void;
   readonly selectionCount: number;
 };
 
-export const FilePageHeader = ({
-  downloading,
-  onDownloadSelected,
-  selectionCount,
-}: FilePageHeaderProps) => (
+export const FilePageHeader = ({ onDownloadSelected, selectionCount }: FilePageHeaderProps) => (
   <header className="page-heading">
     <div>
       <span className="eyebrow">Verified recovery workspace</span>
@@ -22,7 +17,7 @@ export const FilePageHeader = ({
     <div className="button-row">
       <button
         className="button secondary"
-        disabled={selectionCount === 0 || downloading}
+        disabled={selectionCount === 0}
         onClick={onDownloadSelected}
         type="button"
       >

@@ -1,17 +1,32 @@
-import { useEffect, useRef, useState } from "react";
-
-import type { TransferRow } from "../components/transfer-progress-list";
+import { useTransferManager } from "../components/transfer-provider";
 import { downloadWithProgress } from "../transfer-api";
+import type { TransferKind } from "../transfer-manager";
 
-type DownloadTransfer = {
+export type DownloadTransfer = {
+  readonly delivery?: "download" | "share";
   readonly filename: string;
   readonly id?: string;
   readonly init?: RequestInit;
+  readonly kind?: TransferKind;
   readonly label: string;
   readonly path: string;
 };
 
-const saveBlob = (blob: Blob, filename: string): void => {
+const saveBlob = async (
+  blob: Blob,
+  filename: string,
+  delivery: "download" | "share",
+): Promise<void> => {
+  const file = new File([blob], filename, { type: blob.type });
+  if (
+    delivery === "share" &&
+    navigator.maxTouchPoints > 0 &&
+    window.matchMedia("(pointer: coarse)").matches &&
+    navigator.canShare?.({ files: [file] })
+  ) {
+    await navigator.share({ files: [file], title: filename });
+    return;
+  }
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
@@ -21,75 +36,29 @@ const saveBlob = (blob: Blob, filename: string): void => {
 };
 
 export const useDownloadTransfer = () => {
-  const [row, setRow] = useState<TransferRow | null>(null);
-  const [isDownloading, setIsDownloading] = useState(false);
-  const controller = useRef<AbortController | null>(null);
+  const manager = useTransferManager();
 
-  useEffect(() => {
-    return () => {
-      controller.current?.abort();
-    };
-  }, []);
+  const downloadMany = (transfers: readonly DownloadTransfer[]): string | null =>
+    manager.enqueueBatch(
+      transfers.map(
+        ({ delivery = "download", filename, id = filename, init, kind = "file", label, path }) => ({
+          execute: async ({ onProgress, signal }) => {
+            const blob = await downloadWithProgress(path, onProgress, { ...init, signal });
+            await saveBlob(blob, filename, delivery);
+          },
+          id: `download:${id}`,
+          kind,
+          label,
+          operation: "download",
+          path: label,
+          total: null,
+        }),
+      ),
+    );
 
-  const download = async ({
-    filename,
-    id = filename,
-    init,
-    label,
-    path,
-  }: DownloadTransfer): Promise<boolean> => {
-    setIsDownloading(true);
-    const downloadController = new AbortController();
-    controller.current = downloadController;
-    setRow({
-      id: `download:${id}`,
-      label,
-      loaded: 0,
-      percent: 0,
-      status: "transferring",
-      total: null,
-    });
-    try {
-      const blob = await downloadWithProgress(
-        path,
-        (progress) => {
-          setRow((current) =>
-            current === null ? null : { ...current, ...progress, status: "transferring" },
-          );
-        },
-        { ...init, signal: downloadController.signal },
-      );
-      saveBlob(blob, filename);
-      setRow((current) =>
-        current === null
-          ? null
-          : {
-              ...current,
-              loaded: blob.size,
-              percent: 100,
-              status: "complete",
-              total: current.total ?? blob.size,
-            },
-      );
-      return true;
-    } catch (cause) {
-      setRow((current) =>
-        current === null
-          ? null
-          : {
-              ...current,
-              error: cause instanceof Error ? cause.message : "Download failed",
-              status: "failed",
-            },
-      );
-      return false;
-    } finally {
-      if (controller.current === downloadController) {
-        controller.current = null;
-      }
-      setIsDownloading(false);
-    }
+  const download = (transfer: DownloadTransfer): string | null => {
+    return downloadMany([transfer]);
   };
 
-  return { download, isDownloading, rows: row === null ? [] : [row] } as const;
+  return { download, downloadMany } as const;
 };

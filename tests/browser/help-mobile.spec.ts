@@ -89,9 +89,10 @@ test("mobile library workflows remain usable", async ({ page, request }) => {
     "data-status",
     "complete",
   );
+  await page.getByRole("button", { name: "Close background transfers" }).click();
+  await expect(page.getByTestId("transfer-center")).toHaveCount(0);
   await page.getByTestId(`photo-${photoId}`).click();
-  await page.getByTestId("photo-zoom-in").click();
-  await expect(page.getByTestId("photo-zoom-value")).toHaveText("125%");
+  await expect(page.getByRole("button", { name: "Zoom in" })).toHaveCount(0);
 
   const stage = page.getByTestId("photo-lightbox-stage");
   const box = await stage.boundingBox();
