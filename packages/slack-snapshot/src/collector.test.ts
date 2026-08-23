@@ -78,4 +78,23 @@ describe("Slack snapshot collector", () => {
 
     expect(events).toEqual(["stop", "collect", "start"]);
   });
+
+  test("preserves both operation and resume failures", async () => {
+    const error = await withQuiescedWriters(
+      async () => undefined,
+      async () => {
+        throw new Error("resume failed");
+      },
+      async () => {
+        throw new Error("snapshot failed");
+      },
+    ).catch((reason: unknown) => reason);
+
+    expect(error).toBeInstanceOf(AggregateError);
+    expect(error).toHaveProperty("errors");
+    expect((error as AggregateError).errors.map((reason) => String(reason))).toEqual([
+      "Error: snapshot failed",
+      "Error: resume failed",
+    ]);
+  });
 });

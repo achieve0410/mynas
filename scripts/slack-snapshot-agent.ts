@@ -18,9 +18,13 @@ import { restoreSnapshot } from "../packages/slack-snapshot/src/restore";
 import {
   mysqlLogicalDump,
   runLaunchctl,
-  runSlackServiceCommand,
+  runTailscale,
+  slackLaunchdLoaded,
+  verifySlackPlist,
+  waitForSlackPort,
   withDirectoryLock,
 } from "../packages/slack-snapshot/src/runtime";
+import { SlackDashboardLifecycle } from "../packages/slack-snapshot/src/slack-lifecycle";
 import {
   processSnapshotKeychainRunner,
   SnapshotKeychain,
@@ -158,10 +162,22 @@ const main = async (): Promise<void> => {
     withLock: async (operation) =>
       withDirectoryLock(join(environment.MYNAS_SNAPSHOT_STAGE_ROOT, "active.lock"), operation),
   });
-  const serviceScript = join(environment.SLACK_DASHBOARD_ROOT, "backend", "deploy", "service.sh");
+  const uid = process.getuid?.();
+  if (uid === undefined) {
+    throw new Error("Slack launchd lifecycle requires a numeric user id");
+  }
+  const lifecycle = new SlackDashboardLifecycle({
+    home,
+    isLoaded: slackLaunchdLoaded(uid),
+    runLaunchctl,
+    runTailscale,
+    uid,
+    verifyPlist: verifySlackPlist,
+    waitForPort: waitForSlackPort,
+  });
   const result = await withQuiescedWriters(
-    async () => runSlackServiceCommand(serviceScript, "stop"),
-    async () => runSlackServiceCommand(serviceScript, "start"),
+    async () => lifecycle.stop(),
+    async () => lifecycle.start(),
     async () =>
       producer.create(
         collectSlackArchive({

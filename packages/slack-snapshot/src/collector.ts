@@ -76,9 +76,25 @@ export const withQuiescedWriters = async <Result>(
   operation: () => Promise<Result>,
 ): Promise<Result> => {
   await stop();
-  try {
-    return await operation();
-  } finally {
-    await start();
+  const outcome = await operation().then(
+    (value) => ({ ok: true as const, value }),
+    (error: unknown) => ({ error, ok: false as const }),
+  );
+  const resume = await start().then(
+    () => ({ ok: true as const }),
+    (error: unknown) => ({ error, ok: false as const }),
+  );
+  if (!outcome.ok && !resume.ok) {
+    throw new AggregateError(
+      [outcome.error, resume.error],
+      "snapshot operation and Slack resume both failed",
+    );
   }
+  if (!outcome.ok) {
+    throw outcome.error;
+  }
+  if (!resume.ok) {
+    throw resume.error;
+  }
+  return outcome.value;
 };
