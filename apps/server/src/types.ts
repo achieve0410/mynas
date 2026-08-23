@@ -5,6 +5,7 @@ import type { ActivityRepository } from "../../../packages/activity/src/reposito
 import type { AuthService, User } from "../../../packages/auth/src/auth";
 import type { MaintenanceCoordinator } from "../../../packages/maintenance/src/maintenance";
 import type { MaintenanceScheduler } from "../../../packages/maintenance/src/scheduler";
+import type { SnapshotService } from "../../../packages/snapshots/src/service";
 import type { StorageRegistry } from "../../../packages/storage/src/registry";
 
 export type AppEnvironment = {
@@ -24,4 +25,5 @@ export type AppServices = {
   readonly peerAddress: (request: Request) => string;
   readonly registry: StorageRegistry;
   readonly scheduler: MaintenanceScheduler;
+  readonly snapshots: SnapshotService;
 };

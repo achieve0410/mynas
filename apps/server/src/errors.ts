@@ -4,13 +4,14 @@ import { z } from "zod";
 import { AuthError } from "../../../packages/auth/src/auth";
 import { MaintenanceError } from "../../../packages/maintenance/src/maintenance";
 import { PhotoError } from "../../../packages/photos/src/photos";
+import { SnapshotError } from "../../../packages/snapshots/src/models";
 import { CatalogError } from "../../../packages/storage/src/catalog";
 import { MirrorError } from "../../../packages/storage/src/mirror";
 import { RegistryError } from "../../../packages/storage/src/registry";
 
 import type { AppEnvironment } from "./types";
 
-type ErrorStatus = 400 | 401 | 403 | 404 | 409 | 500 | 503;
+type ErrorStatus = 400 | 401 | 403 | 404 | 409 | 422 | 500 | 503;
 
 const domainErrorStatus = (error: unknown): ErrorStatus => {
   if (error instanceof AuthError) {
@@ -51,6 +52,15 @@ const domainErrorStatus = (error: unknown): ErrorStatus => {
   }
   if (error instanceof MaintenanceError) {
     return error.code === "conflict" ? 409 : 400;
+  }
+  if (error instanceof SnapshotError) {
+    if (error.code === "not_found") {
+      return 404;
+    }
+    if (error.code === "conflict") {
+      return 409;
+    }
+    return error.code === "storage" ? 503 : 422;
   }
   if (error instanceof z.ZodError || error instanceof SyntaxError) {
     return 400;

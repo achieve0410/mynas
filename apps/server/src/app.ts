@@ -7,6 +7,8 @@ import { backupCatalogDatabase } from "../../../packages/database/src/catalog-ba
 import { MaintenanceCoordinator } from "../../../packages/maintenance/src/maintenance";
 import { MaintenanceRepository } from "../../../packages/maintenance/src/repository";
 import { MaintenanceScheduler } from "../../../packages/maintenance/src/scheduler";
+import { SnapshotRepository } from "../../../packages/snapshots/src/repository";
+import { SnapshotService } from "../../../packages/snapshots/src/service";
 import { StorageRegistry } from "../../../packages/storage/src/registry";
 
 import { registerActivityRoutes } from "./activity-routes";
@@ -19,6 +21,7 @@ import { errorResponse } from "./errors";
 import { registerFileRoutes } from "./file-routes";
 import { registerMaintenanceRoutes } from "./maintenance-routes";
 import { registerPhotoRoutes } from "./photo-routes";
+import { registerSnapshotBundleRoutes } from "./snapshot-bundle-routes";
 import { registerStorageRoutes } from "./storage-routes";
 import type { AppEnvironment, AppServices } from "./types";
 import { registerWebRoutes } from "./web-routes";
@@ -72,6 +75,9 @@ export const createAppServices = (options: AppServiceOptions): AppServices => {
     peerAddress: options.peerAddress ?? (() => "127.0.0.1"),
     registry,
     scheduler,
+    snapshots: new SnapshotService(new SnapshotRepository(options.database), async (id) =>
+      registry.getVolume(id),
+    ),
   };
 };
 
@@ -86,6 +92,7 @@ export const createApp = (options: CreateAppOptions): Hono<AppEnvironment> => {
   registerActivityRoutes(app, services);
   registerStorageRoutes(app, services);
   registerFileRoutes(app, services);
+  registerSnapshotBundleRoutes(app, services);
   registerPhotoRoutes(app, services);
   registerMaintenanceRoutes(app, services);
   registerWebRoutes(app, options.environment.MYNAS_WEB_ROOT);
